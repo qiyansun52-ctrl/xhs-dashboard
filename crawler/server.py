@@ -21,7 +21,7 @@ import logging
 import re
 import uuid
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
 # ── 路径配置 ─────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ EXTERNAL_DISCOVERY_MAX_BENCHMARK_ACCOUNTS = getattr(app_config, "EXTERNAL_DISCOV
 EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK", 10)
 EXTERNAL_DISCOVERY_MAX_CANDIDATES = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_CANDIDATES", 30)
 EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS = getattr(app_config, "EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS", 2)
+EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES = getattr(app_config, "EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES", 30)
 
 # ── 全局状态 ──────────────────────────────────────────────────────────
 xhs_client: Optional[XiaoHongShuClient] = None
@@ -530,6 +531,17 @@ async def upsert_discovery_candidate(job_id: str, source_path: str, source_meta:
     sb.table("external_discovery_candidates").upsert(row, on_conflict="job_id,url").execute()
 
 
+def recover_stale_external_discovery_jobs():
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(minutes=EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES)).isoformat()
+    timestamp = now_iso()
+    sb.table("external_discovery_jobs").update({
+        "status": "failed",
+        "error_message": "外部发现任务运行超时，请重新创建任务。",
+        "finished_at": timestamp,
+        "updated_at": timestamp,
+    }).eq("status", "running").lt("started_at", cutoff_iso).execute()
+
+
 async def process_external_discovery_jobs():
     if not EXTERNAL_DISCOVERY_ENABLED:
         return
@@ -537,6 +549,7 @@ async def process_external_discovery_jobs():
         log.warning("XHS 客户端未就绪，跳过外部发现任务")
         return
     try:
+        recover_stale_external_discovery_jobs()
         result = (
             sb.table("external_discovery_jobs")
             .select("*")

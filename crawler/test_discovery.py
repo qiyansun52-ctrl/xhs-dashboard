@@ -111,6 +111,15 @@ class FakeKeywordClient:
             raise AssertionError(f"unexpected sort value: {sort.value}")
 
 
+class FakeExplodingSearchClient:
+    def __init__(self):
+        self.calls = 0
+
+    async def search_note(self, keyword, page=1, page_size=10, sort=None):
+        self.calls += 1
+        raise AttributeError("api exploded")
+
+
 class XhsDiscoveryAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_search_adapter_uses_available_search_method(self):
         from xhs_discovery import search_keyword_notes
@@ -125,6 +134,15 @@ class XhsDiscoveryAdapterTests(unittest.IsolatedAsyncioTestCase):
         rows = await search_keyword_notes(FakeKeywordClient(), "美国申请", limit=5)
         self.assertEqual(rows[0]["note_id"], "n2")
         self.assertEqual(rows[0]["display_title"], "美国申请")
+
+    async def test_search_adapter_does_not_retry_arbitrary_attribute_error(self):
+        from xhs_discovery import search_keyword_notes
+
+        client = FakeExplodingSearchClient()
+        with self.assertRaisesRegex(AttributeError, "api exploded"):
+            await search_keyword_notes(client, "澳洲申请", limit=5)
+
+        self.assertEqual(client.calls, 1)
 
 
 class DiscoveryServiceTests(unittest.TestCase):

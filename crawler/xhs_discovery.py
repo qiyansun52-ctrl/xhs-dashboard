@@ -32,6 +32,28 @@ def _extract_items(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+def _is_signature_fallback_error(exc: Exception) -> bool:
+    if isinstance(exc, TypeError):
+        return True
+    if not isinstance(exc, AttributeError):
+        return False
+
+    message = str(exc).lower()
+    return (
+        "sort" in message and "value" in message
+    ) or (
+        "has no attribute" in message and "value" in message
+    ) or (
+        "unexpected keyword" in message
+    ) or (
+        "unexpected argument" in message
+    ) or (
+        "positional argument" in message
+    ) or (
+        "required positional argument" in message
+    )
+
+
 async def search_keyword_notes(client, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
     method_names = ("search_note", "search_notes", "get_note_by_keyword")
     for method_name in method_names:
@@ -47,7 +69,9 @@ async def search_keyword_notes(client, keyword: str, limit: int = 20) -> List[Di
                     sort=_SearchSort("popularity_descending"),
                 )
             )
-        except (TypeError, AttributeError):
+        except (TypeError, AttributeError) as exc:
+            if not _is_signature_fallback_error(exc):
+                raise
             try:
                 payload = await _maybe_await(method(keyword=keyword, page=1, page_size=limit))
             except TypeError:
