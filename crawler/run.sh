@@ -10,7 +10,7 @@
 set -e  # 任何步骤出错就停止
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MEDIACRAWLER_DIR="/Users/gabriel/MediaCrawler"
+MEDIACRAWLER_DIR="${MEDIACRAWLER_DIR:-/Users/gabriel/MediaCrawler}"
 LOG_FILE="$SCRIPT_DIR/logs/run_$(date +%Y%m%d_%H%M%S).log"
 DRY_RUN=${1:-""}
 

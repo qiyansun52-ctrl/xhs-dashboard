@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 # ── 路径配置 ─────────────────────────────────────────────────────────
-MEDIACRAWLER_DIR = "/Users/gabriel/MediaCrawler"
+MEDIACRAWLER_DIR = os.getenv("MEDIACRAWLER_DIR", "/Users/gabriel/MediaCrawler")
 CRAWLER_DIR = os.path.dirname(os.path.abspath(__file__))
 
 sys.path.insert(0, MEDIACRAWLER_DIR)
@@ -196,7 +196,10 @@ async def init_xhs_client() -> bool:
             client_ready = True
             return True
         else:
-            log.warning("⚠️  XHS 登录状态失效，请重新扫码：cd /Users/gabriel/MediaCrawler && .venv/bin/python main.py --platform xhs --lt qrcode --type creator")
+            log.warning(
+                "⚠️  XHS 登录状态失效，请重新扫码："
+                f"cd {MEDIACRAWLER_DIR} && .venv/bin/python main.py --platform xhs --lt qrcode --type creator"
+            )
             client_ready = False
             return False
 

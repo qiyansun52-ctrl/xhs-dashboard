@@ -1,12 +1,28 @@
 import { useState, useEffect } from "react";
-import { FileText, Users2, CalendarDays, BookOpen, BarChart2, Plus, X, UserCircle } from "lucide-react";
+import { FileText, Users2, CalendarDays, BookOpen, BarChart2, Plus, X, UserCircle, Sparkles } from "lucide-react";
 import { supabase } from "./supabase.js";
 import ContentManager  from "./components/ContentManager.jsx";
 import AccountsPage    from "./components/AccountsPage.jsx";
 import CalendarPage    from "./components/CalendarPage.jsx";
 import MaterialPage    from "./components/MaterialPage.jsx";
 import AnalyticsPage   from "./components/AnalyticsPage.jsx";
+import AISearchPage    from "./components/AISearchPage.jsx";
 import { ROLE_LABELS, inputStyle, useIsMobile } from "./components/shared.jsx";
+
+const ACCOUNT_LIST_COLUMNS = [
+  "id",
+  "name",
+  "avatar",
+  "flag",
+  "color",
+  "xhs_link",
+  "bio",
+  "followers",
+  "views",
+  "likes",
+  "saves",
+  "created_at",
+].join(", ");
 
 
 function JoinTeamModal({ onClose, onJoin }) {
@@ -100,7 +116,7 @@ export default function App() {
   }, []);
 
   const loadAccounts = async () => {
-    const { data, error } = await supabase.from("accounts").select("*").order("id");
+    const { data, error } = await supabase.from("accounts").select(ACCOUNT_LIST_COLUMNS).order("id");
     if (!error && data) setAccounts(data);
   };
 
@@ -114,6 +130,7 @@ export default function App() {
     { key: "content",   icon: <FileText size={20} />,     label: "内容管理" },
     { key: "calendar",  icon: <CalendarDays size={20} />, label: "内容日历" },
     { key: "material",  icon: <BookOpen size={20} />,     label: "素材库"   },
+    { key: "ai",        icon: <Sparkles size={20} />,     label: "AI 搜索"  },
     { key: "analytics", icon: <BarChart2 size={20} />,    label: "数据监控" },
   ];
 
@@ -228,6 +245,7 @@ export default function App() {
         {view === "accounts"  && <AccountsPage   accounts={accounts} members={members} onAccountsChange={setAccounts} />}
         {view === "calendar"  && <CalendarPage   accounts={accounts} members={members} />}
         {view === "material"  && <MaterialPage />}
+        {view === "ai"        && <AISearchPage />}
         {view === "analytics" && <AnalyticsPage  accounts={accounts} />}
       </div>
 

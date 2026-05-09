@@ -135,6 +135,8 @@ def import_account_stats(sb: Client, user: dict, account_id: int, dry_run: bool)
         log(f"[dry-run] 会更新账号 {account_id} 粉丝数: {user['followers']}", "info")
         return
 
+    snapshot_date = now_iso().split("T")[0]
+
     # 更新最新粉丝数
     sb.table("accounts").update({
         "followers":    user["followers"],
@@ -142,14 +144,15 @@ def import_account_stats(sb: Client, user: dict, account_id: int, dry_run: bool)
     }).eq("id", account_id).execute()
 
     # 插入历史快照
-    sb.table("account_stats_history").insert({
+    sb.table("account_stats_history").upsert({
         "account_id":  account_id,
         "xhs_user_id": user["xhs_user_id"],
+        "date":        snapshot_date,
         "followers":   user["followers"],
         "following":   user["following"],
         "notes_count": user["notes_count"],
         "collected_at": now_iso(),
-    }).execute()
+    }, on_conflict="account_id,date").execute()
 
     log(f"账号 {account_id} 粉丝数更新 → {user['followers']:,}", "ok")
 

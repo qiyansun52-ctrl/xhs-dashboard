@@ -4,6 +4,27 @@ import { supabase } from "../supabase.js";
 import { inputStyle, useIsMobile } from "./shared.jsx";
 import ViralPostDrawer from "./ViralPostDrawer.jsx";
 
+const VIRAL_POST_COLUMNS = [
+  "id",
+  "url",
+  "note",
+  "country",
+  "fetch_status",
+  "created_at",
+  "fetched_at",
+  "xhs_note_id",
+  "title",
+  "caption",
+  "cover_image",
+  "images",
+  "tags",
+  "author_name",
+  "likes",
+  "saves",
+  "comments",
+  "views",
+].join(", ");
+
 const TOPIC_TAGS = ["申请时间线", "选校避坑", "语言备考", "offer晒单", "被拒复盘", "申请焦虑", "海外日常"];
 const TAG_COLOR = {
   "申请时间线": "#54A0FF", "选校避坑": "#FF9F43", "语言备考": "#A29BFE",
@@ -717,14 +738,15 @@ function ViralPostsTab() {
     const sub = supabase
       .channel("viral_posts_changes")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "viral_posts" }, payload => {
-        setItems(prev => prev.map(i => i.id === payload.new.id ? { ...i, ...payload.new } : i));
+        const { embedding, ...next } = payload.new;
+        setItems(prev => prev.map(i => i.id === next.id ? { ...i, ...next } : i));
       })
       .subscribe();
     return () => supabase.removeChannel(sub);
   }, []);
 
   const load = async () => {
-    const { data } = await supabase.from("viral_posts").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("viral_posts").select(VIRAL_POST_COLUMNS).order("created_at", { ascending: false });
     if (data) setItems(data);
     setLoading(false);
   };

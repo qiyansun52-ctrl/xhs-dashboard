@@ -14,6 +14,21 @@ import {
 } from "./shared.jsx";
 import PostDetailDrawer from "./PostDetailDrawer.jsx";
 
+const ACCOUNT_PUBLIC_COLUMNS = [
+  "id",
+  "name",
+  "avatar",
+  "flag",
+  "color",
+  "xhs_link",
+  "bio",
+  "followers",
+  "views",
+  "likes",
+  "saves",
+  "created_at",
+].join(", ");
+
 /* ─────────────────────────────────────────────
    Add Account Modal
 ───────────────────────────────────────────── */
@@ -47,21 +62,25 @@ function AddAccountModal({ onClose, onAdd, onUpdate, account }) {
       flag:         form.flag,
       color:        form.color,
       xhs_link:     form.xhs_link.trim() || null,
-      phone:        form.phone.trim()    || null,
-      xhs_password: form.xhs_password.trim() || null,
       bio:          form.bio.trim()      || null,
       followers:    Number(form.followers) || 0,
       views:        Number(form.views)     || 0,
       likes:        Number(form.likes)     || 0,
       saves:        Number(form.saves)     || 0,
     };
+    if (!isEdit || form.phone.trim()) {
+      payload.phone = form.phone.trim() || null;
+    }
+    if (!isEdit || form.xhs_password.trim()) {
+      payload.xhs_password = form.xhs_password.trim() || null;
+    }
     if (isEdit) {
-      const { data, error } = await supabase.from("accounts").update(payload).eq("id", account.id).select().single();
+      const { data, error } = await supabase.from("accounts").update(payload).eq("id", account.id).select(ACCOUNT_PUBLIC_COLUMNS).single();
       setSaving(false);
       if (error) { alert("保存失败：" + error.message); return; }
       onUpdate(data);
     } else {
-      const { data, error } = await supabase.from("accounts").insert([payload]).select().single();
+      const { data, error } = await supabase.from("accounts").insert([payload]).select(ACCOUNT_PUBLIC_COLUMNS).single();
       setSaving(false);
       if (error) { alert("创建失败：" + error.message); return; }
       onAdd(data);
@@ -169,6 +188,11 @@ function AddAccountModal({ onClose, onAdd, onUpdate, account }) {
           <div style={{ fontSize: 11, color: "#FF244280", marginBottom: 12, fontWeight: 500 }}>
             🔒 敏感信息 — 仅存储，点击卡片时不展示
           </div>
+          {isEdit && (
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 12 }}>
+              编辑时留空则保持原值，不会覆盖已存储的手机号和密码。
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={{ display: "block", fontSize: 12, color: "#666", marginBottom: 7, fontWeight: 500 }}>登录手机号</label>
