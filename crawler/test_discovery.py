@@ -112,12 +112,13 @@ class FakeKeywordClient:
 
 
 class FakeExplodingSearchClient:
-    def __init__(self):
+    def __init__(self, message="api exploded"):
         self.calls = 0
+        self.message = message
 
     async def search_note(self, keyword, page=1, page_size=10, sort=None):
         self.calls += 1
-        raise AttributeError("api exploded")
+        raise AttributeError(self.message)
 
 
 class XhsDiscoveryAdapterTests(unittest.IsolatedAsyncioTestCase):
@@ -143,6 +144,21 @@ class XhsDiscoveryAdapterTests(unittest.IsolatedAsyncioTestCase):
             await search_keyword_notes(client, "澳洲申请", limit=5)
 
         self.assertEqual(client.calls, 1)
+
+    async def test_search_adapter_does_not_retry_internal_attribute_error_mentioning_value(self):
+        from xhs_discovery import search_keyword_notes
+
+        messages = [
+            "response has no attribute value",
+            "sort parser has no attribute value",
+        ]
+        for message in messages:
+            with self.subTest(message=message):
+                client = FakeExplodingSearchClient(message)
+                with self.assertRaisesRegex(AttributeError, message):
+                    await search_keyword_notes(client, "澳洲申请", limit=5)
+
+                self.assertEqual(client.calls, 1)
 
 
 class DiscoveryServiceTests(unittest.TestCase):

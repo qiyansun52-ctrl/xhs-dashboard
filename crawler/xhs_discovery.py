@@ -38,20 +38,8 @@ def _is_signature_fallback_error(exc: Exception) -> bool:
     if not isinstance(exc, AttributeError):
         return False
 
-    message = str(exc).lower()
-    return (
-        "sort" in message and "value" in message
-    ) or (
-        "has no attribute" in message and "value" in message
-    ) or (
-        "unexpected keyword" in message
-    ) or (
-        "unexpected argument" in message
-    ) or (
-        "positional argument" in message
-    ) or (
-        "required positional argument" in message
-    )
+    message = str(exc).strip().lower()
+    return message == "sort must expose value"
 
 
 async def search_keyword_notes(client, keyword: str, limit: int = 20) -> List[Dict[str, Any]]:

@@ -545,11 +545,11 @@ def recover_stale_external_discovery_jobs():
 async def process_external_discovery_jobs():
     if not EXTERNAL_DISCOVERY_ENABLED:
         return
-    if xhs_client is None:
-        log.warning("XHS 客户端未就绪，跳过外部发现任务")
-        return
     try:
         recover_stale_external_discovery_jobs()
+        if xhs_client is None:
+            log.warning("XHS 客户端未就绪，跳过外部发现任务")
+            return
         result = (
             sb.table("external_discovery_jobs")
             .select("*")
