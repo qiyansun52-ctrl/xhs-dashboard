@@ -535,6 +535,18 @@ async def ignore_discovery_candidate(candidate_id: str):
         raise HTTPException(500, "操作失败，请稍后重试。")
 
 
+@app.post("/ai/discovery-candidates/{candidate_id}/approve", dependencies=[Depends(require_api_key)])
+async def approve_discovery_candidate(candidate_id: str):
+    try:
+        candidate = discovery_service.approve_candidate(candidate_id)
+        return {"ok": True, "candidate": candidate}
+    except DiscoveryNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        log.error(f"通过候选素材并入库失败: {e}")
+        raise HTTPException(500, "通过并入库失败，请稍后重试。")
+
+
 @app.post("/ai/discovery-candidates/{candidate_id}/reject", dependencies=[Depends(require_api_key)])
 async def reject_discovery_candidate(candidate_id: str, req: ReviewCandidateReq):
     try:

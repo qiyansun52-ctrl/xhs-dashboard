@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Bookmark, Image as ImageIcon, Loader2, Send, Sparkles } from "lucide-react";
 import { supabase } from "../supabase.js";
 import {
+  approveDiscoveryCandidate,
   createDiscoveryJob,
   createDiscoverySupplement,
   getDiscoveryJob,
@@ -80,11 +81,12 @@ function DiscoveryCandidateCard({ candidate, onReview, isReviewing }) {
   const statusLabel = {
     pending: "待处理",
     ignored: "已忽略",
-    rejected: "已拒绝",
-    approved: "已采纳",
+    rejected: "已标记不相关",
+    approved: "已入库",
   }[reviewStatus] || reviewStatus;
   const isReviewed = reviewStatus !== "pending";
   const isActionDisabled = isReviewed || isReviewing;
+  const isApproved = reviewStatus === "approved";
   const sourcePathLabel = DISCOVERY_SOURCE_PATH_LABELS[candidate.source_path] || "关键词搜索";
   const detailText = candidate.caption || candidate.ai_reason || "暂无摘要，建议打开原始链接人工判断。";
 
@@ -127,9 +129,9 @@ function DiscoveryCandidateCard({ candidate, onReview, isReviewing }) {
         <span style={{
           flexShrink: 0,
           fontSize: 10,
-          color: isReviewed ? "#666" : "#FF9F43",
-          background: isReviewed ? "#151515" : "rgba(255,159,67,0.08)",
-          border: `1px solid ${isReviewed ? "#242424" : "rgba(255,159,67,0.18)"}`,
+          color: isApproved ? "#26DE81" : isReviewed ? "#666" : "#FF9F43",
+          background: isApproved ? "rgba(38,222,129,0.08)" : isReviewed ? "#151515" : "rgba(255,159,67,0.08)",
+          border: `1px solid ${isApproved ? "rgba(38,222,129,0.2)" : isReviewed ? "#242424" : "rgba(255,159,67,0.18)"}`,
           borderRadius: 999,
           padding: "3px 8px",
         }}>
@@ -167,6 +169,22 @@ function DiscoveryCandidateCard({ candidate, onReview, isReviewing }) {
             打开外部链接
           </a>
         )}
+        <button
+          type="button"
+          disabled={isActionDisabled}
+          onClick={() => onReview(candidate, "approve")}
+          style={{
+            padding: "7px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(38,222,129,0.25)",
+            background: "rgba(38,222,129,0.08)",
+            color: isActionDisabled ? "#444" : "#26DE81",
+            cursor: isActionDisabled ? "not-allowed" : "pointer",
+            fontSize: 12,
+          }}
+        >
+          {isReviewing ? "处理中…" : "通过并入库"}
+        </button>
         <button
           type="button"
           disabled={isActionDisabled}
@@ -557,9 +575,14 @@ export default function AISearchPage() {
 
     setReviewingCandidateId(candidate.id);
     try {
-      const resp = action === "ignore"
-        ? await ignoreDiscoveryCandidate(candidate.id)
-        : await rejectDiscoveryCandidate(candidate.id, "不相关");
+      let resp;
+      if (action === "approve") {
+        resp = await approveDiscoveryCandidate(candidate.id);
+      } else if (action === "ignore") {
+        resp = await ignoreDiscoveryCandidate(candidate.id);
+      } else {
+        resp = await rejectDiscoveryCandidate(candidate.id, "不相关");
+      }
       const updated = resp.candidate;
       setDiscoveryCandidates(prev => prev.map(item => item.id === candidate.id ? { ...item, ...updated } : item));
       supplementRequestSeqRef.current += 1;

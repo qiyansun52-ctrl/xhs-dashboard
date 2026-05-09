@@ -78,6 +78,10 @@ export async function ignoreDiscoveryCandidate(candidateId) {
   return postJson(`/ai/discovery-candidates/${candidateId}/ignore`, {});
 }
 
+export async function approveDiscoveryCandidate(candidateId) {
+  return postJson(`/ai/discovery-candidates/${candidateId}/approve`, {});
+}
+
 export async function rejectDiscoveryCandidate(candidateId, reason = "不相关") {
   return postJson(`/ai/discovery-candidates/${candidateId}/reject`, { reason });
 }
