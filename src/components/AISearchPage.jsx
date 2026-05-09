@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Bookmark, Image as ImageIcon, Loader2, Send, Sparkles } from "lucide-react";
 import { supabase } from "../supabase.js";
 import {
@@ -340,6 +340,8 @@ export default function AISearchPage() {
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
   const [reviewingCandidateId, setReviewingCandidateId] = useState(null);
+  const discoveryRequestSeqRef = useRef(0);
+  const activeDiscoveryJobIdRef = useRef(null);
 
   const uploadImage = async () => {
     if (!imageFile) return null;
@@ -371,10 +373,14 @@ export default function AISearchPage() {
         previousAnswerSummary: answer?.conclusion || null,
         previousCitationIds: answer?.cited_sources?.map(source => source.id) || [],
       });
+      discoveryRequestSeqRef.current += 1;
+      activeDiscoveryJobIdRef.current = null;
       setAnswer(result);
       setDiscoveryJob(null);
       setDiscoveryCandidates([]);
+      setDiscoveryLoading(false);
       setDiscoveryError("");
+      setReviewingCandidateId(null);
     } catch (err) {
       setError(err.message || "AI 服务暂时不可用，请稍后再试。");
     } finally {
@@ -382,8 +388,11 @@ export default function AISearchPage() {
     }
   };
 
-  const refreshDiscoveryJob = useCallback(async (jobId) => {
+  const refreshDiscoveryJob = useCallback(async (jobId, expectedSeq = discoveryRequestSeqRef.current) => {
     const payload = await getDiscoveryJob(jobId);
+    if (discoveryRequestSeqRef.current !== expectedSeq || activeDiscoveryJobIdRef.current !== jobId) {
+      return null;
+    }
     setDiscoveryJob(payload.job);
     setDiscoveryCandidates(payload.candidates || []);
     return payload.job;
@@ -392,6 +401,9 @@ export default function AISearchPage() {
   const handleCreateDiscovery = async () => {
     if (!answer) return;
 
+    const requestSeq = discoveryRequestSeqRef.current + 1;
+    discoveryRequestSeqRef.current = requestSeq;
+    activeDiscoveryJobIdRef.current = null;
     setDiscoveryLoading(true);
     setDiscoveryError("");
     try {
@@ -403,12 +415,17 @@ export default function AISearchPage() {
         search_queries: answer.suggested_search_queries?.length ? answer.suggested_search_queries : null,
         benchmark_account_ids: [],
       });
+      if (discoveryRequestSeqRef.current !== requestSeq) return;
+      activeDiscoveryJobIdRef.current = job.id;
       setDiscoveryJob(job);
       setDiscoveryCandidates([]);
     } catch (err) {
+      if (discoveryRequestSeqRef.current !== requestSeq) return;
       setDiscoveryError(err.message || "创建外部发现任务失败，请稍后重试。");
     } finally {
-      setDiscoveryLoading(false);
+      if (discoveryRequestSeqRef.current === requestSeq) {
+        setDiscoveryLoading(false);
+      }
     }
   };
 
@@ -456,9 +473,13 @@ export default function AISearchPage() {
   useEffect(() => {
     if (!discoveryJob?.id || !["pending", "running"].includes(discoveryJob.status)) return;
 
+    const expectedSeq = discoveryRequestSeqRef.current;
+    const jobId = discoveryJob.id;
     const timer = window.setInterval(() => {
-      refreshDiscoveryJob(discoveryJob.id).catch(err => {
-        setDiscoveryError(err.message || "刷新外部发现任务失败");
+      refreshDiscoveryJob(jobId, expectedSeq).catch(err => {
+        if (discoveryRequestSeqRef.current === expectedSeq && activeDiscoveryJobIdRef.current === jobId) {
+          setDiscoveryError(err.message || "刷新外部发现任务失败");
+        }
       });
     }, 5000);
 
@@ -684,9 +705,15 @@ export default function AISearchPage() {
               </div>
               <button
                 type="button"
-                onClick={() => refreshDiscoveryJob(discoveryJob.id).catch(err => {
-                  setDiscoveryError(err.message || "刷新外部发现任务失败");
-                })}
+                onClick={() => {
+                  const expectedSeq = discoveryRequestSeqRef.current;
+                  const jobId = discoveryJob.id;
+                  refreshDiscoveryJob(jobId, expectedSeq).catch(err => {
+                    if (discoveryRequestSeqRef.current === expectedSeq && activeDiscoveryJobIdRef.current === jobId) {
+                      setDiscoveryError(err.message || "刷新外部发现任务失败");
+                    }
+                  });
+                }}
                 style={{
                   padding: "7px 10px",
                   borderRadius: 8,
@@ -709,7 +736,7 @@ export default function AISearchPage() {
                   key={candidate.id}
                   candidate={candidate}
                   onReview={handleCandidateReview}
-                  isReviewing={reviewingCandidateId === candidate.id}
+                  isReviewing={Boolean(reviewingCandidateId)}
                 />
               ))}
             </div>
