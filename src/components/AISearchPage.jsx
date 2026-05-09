@@ -420,6 +420,7 @@ export default function AISearchPage() {
   const [supplementLoading, setSupplementLoading] = useState(false);
   const discoveryRequestSeqRef = useRef(0);
   const activeDiscoveryJobIdRef = useRef(null);
+  const supplementRequestSeqRef = useRef(0);
 
   const uploadImage = async () => {
     if (!imageFile) return null;
@@ -452,6 +453,7 @@ export default function AISearchPage() {
         previousCitationIds: answer?.cited_sources?.map(source => source.id) || [],
       });
       discoveryRequestSeqRef.current += 1;
+      supplementRequestSeqRef.current += 1;
       activeDiscoveryJobIdRef.current = null;
       setAnswer(result);
       setDiscoveryJob(null);
@@ -460,6 +462,7 @@ export default function AISearchPage() {
       setDiscoveryError("");
       setReviewingCandidateId(null);
       setExternalSupplement(null);
+      setSupplementLoading(false);
     } catch (err) {
       setError(err.message || "AI 服务暂时不可用，请稍后再试。");
     } finally {
@@ -482,10 +485,12 @@ export default function AISearchPage() {
 
     const requestSeq = discoveryRequestSeqRef.current + 1;
     discoveryRequestSeqRef.current = requestSeq;
+    supplementRequestSeqRef.current += 1;
     activeDiscoveryJobIdRef.current = null;
     setDiscoveryLoading(true);
     setDiscoveryError("");
     setExternalSupplement(null);
+    setSupplementLoading(false);
     try {
       const { job } = await createDiscoveryJob({
         user_question: answer.question,
@@ -512,14 +517,38 @@ export default function AISearchPage() {
 
   const handleCreateSupplement = async () => {
     if (!discoveryJob?.id) return;
+    const jobId = discoveryJob.id;
+    const expectedSeq = discoveryRequestSeqRef.current;
+    const supplementSeq = supplementRequestSeqRef.current + 1;
+    supplementRequestSeqRef.current = supplementSeq;
     setSupplementLoading(true);
     try {
-      const result = await createDiscoverySupplement(discoveryJob.id);
+      const result = await createDiscoverySupplement(jobId);
+      if (
+        activeDiscoveryJobIdRef.current !== jobId
+        || discoveryRequestSeqRef.current !== expectedSeq
+        || supplementRequestSeqRef.current !== supplementSeq
+      ) {
+        return;
+      }
       setExternalSupplement(result);
     } catch (err) {
+      if (
+        activeDiscoveryJobIdRef.current !== jobId
+        || discoveryRequestSeqRef.current !== expectedSeq
+        || supplementRequestSeqRef.current !== supplementSeq
+      ) {
+        return;
+      }
       alert(err.message || "生成外部补充回答失败，请稍后重试。");
     } finally {
-      setSupplementLoading(false);
+      if (
+        activeDiscoveryJobIdRef.current === jobId
+        && discoveryRequestSeqRef.current === expectedSeq
+        && supplementRequestSeqRef.current === supplementSeq
+      ) {
+        setSupplementLoading(false);
+      }
     }
   };
 
@@ -533,6 +562,9 @@ export default function AISearchPage() {
         : await rejectDiscoveryCandidate(candidate.id, "不相关");
       const updated = resp.candidate;
       setDiscoveryCandidates(prev => prev.map(item => item.id === candidate.id ? { ...item, ...updated } : item));
+      supplementRequestSeqRef.current += 1;
+      setExternalSupplement(null);
+      setSupplementLoading(false);
     } catch (err) {
       alert(err.message || "操作失败，请稍后重试。");
     } finally {
