@@ -21,25 +21,23 @@ from retrieval import (
 )
 
 try:
-    from config import (
-        OPENAI_API_KEY,
-        OPENAI_TEXT_MODEL,
-        OPENAI_VISION_MODEL,
-        AI_RESEARCH_MIN_RESULTS,
-        AI_RESEARCH_MIN_SIMILARITY,
-        EXTERNAL_DISCOVERY_ENABLED,
-        EXTERNAL_DISCOVERY_TRIGGER_MODE,
-        EXTERNAL_DISCOVERY_MAX_QUERIES,
-    )
+    import config as app_config
 except Exception:
-    OPENAI_API_KEY = ""
-    OPENAI_TEXT_MODEL = "gpt-4.1-mini"
-    OPENAI_VISION_MODEL = "gpt-4.1-mini"
-    AI_RESEARCH_MIN_RESULTS = 3
-    AI_RESEARCH_MIN_SIMILARITY = 0.55
-    EXTERNAL_DISCOVERY_ENABLED = False
-    EXTERNAL_DISCOVERY_TRIGGER_MODE = "ask_first"
-    EXTERNAL_DISCOVERY_MAX_QUERIES = 4
+    app_config = None
+
+
+def _config_value(name: str, default: Any) -> Any:
+    return getattr(app_config, name, default) if app_config else default
+
+
+OPENAI_API_KEY = _config_value("OPENAI_API_KEY", "")
+OPENAI_TEXT_MODEL = _config_value("OPENAI_TEXT_MODEL", "gpt-4.1-mini")
+OPENAI_VISION_MODEL = _config_value("OPENAI_VISION_MODEL", "gpt-4.1-mini")
+AI_RESEARCH_MIN_RESULTS = _config_value("AI_RESEARCH_MIN_RESULTS", 3)
+AI_RESEARCH_MIN_SIMILARITY = _config_value("AI_RESEARCH_MIN_SIMILARITY", 0.55)
+EXTERNAL_DISCOVERY_ENABLED = _config_value("EXTERNAL_DISCOVERY_ENABLED", False)
+EXTERNAL_DISCOVERY_TRIGGER_MODE = _config_value("EXTERNAL_DISCOVERY_TRIGGER_MODE", "ask_first")
+EXTERNAL_DISCOVERY_MAX_QUERIES = _config_value("EXTERNAL_DISCOVERY_MAX_QUERIES", 4)
 
 
 def model_to_dict(model) -> Dict[str, Any]:

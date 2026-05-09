@@ -1,5 +1,6 @@
 import math
 import unittest
+from types import SimpleNamespace
 
 from discovery import (
     build_candidate_url,
@@ -9,6 +10,7 @@ from discovery import (
     score_candidate,
     validate_external_candidate_ids,
 )
+import research_service
 
 
 class DiscoveryHelperTests(unittest.TestCase):
@@ -47,6 +49,19 @@ class DiscoveryHelperTests(unittest.TestCase):
         )
         self.assertTrue(any("英国" in query for query in queries))
         self.assertTrue(any("申请" in query for query in queries))
+
+    def test_config_value_preserves_legacy_values_when_discovery_fields_missing(self):
+        original_config = research_service.app_config
+        research_service.app_config = SimpleNamespace(
+            OPENAI_API_KEY="legacy-key",
+            AI_RESEARCH_MIN_RESULTS=7,
+        )
+        try:
+            self.assertEqual(research_service._config_value("OPENAI_API_KEY", ""), "legacy-key")
+            self.assertEqual(research_service._config_value("AI_RESEARCH_MIN_RESULTS", 3), 7)
+            self.assertFalse(research_service._config_value("EXTERNAL_DISCOVERY_ENABLED", False))
+        finally:
+            research_service.app_config = original_config
 
     def test_score_candidate_weights_saves_more_than_likes(self):
         low_save = {"likes": 10000, "saves": 50, "comments": 10, "views": 50000}
