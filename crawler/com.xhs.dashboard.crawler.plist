@@ -5,14 +5,21 @@
     <key>Label</key>
     <string>com.xhs.dashboard.crawler</string>
 
+    <!-- setup_autostart.sh renders these placeholders before installing. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MEDIACRAWLER_DIR</key>
+        <string>__MEDIACRAWLER_DIR__</string>
+    </dict>
+
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/gabriel/MediaCrawler/.venv/bin/python</string>
-        <string>/Users/gabriel/Downloads/xhs-dashboard/crawler/server.py</string>
+        <string>__PYTHON_BIN__</string>
+        <string>__CRAWLER_DIR__/server.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/gabriel/MediaCrawler</string>
+    <string>__MEDIACRAWLER_DIR__</string>
 
     <!-- 登录后自动启动 -->
     <key>RunAtLoad</key>
@@ -27,9 +34,9 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/gabriel/Downloads/xhs-dashboard/crawler/logs/server-out.log</string>
+    <string>__CRAWLER_DIR__/logs/server-out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/gabriel/Downloads/xhs-dashboard/crawler/logs/server-err.log</string>
+    <string>__CRAWLER_DIR__/logs/server-err.log</string>
 </dict>
 </plist>

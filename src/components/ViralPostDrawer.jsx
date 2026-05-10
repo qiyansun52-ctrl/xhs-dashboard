@@ -190,18 +190,30 @@ export default function ViralPostDrawer({ post, onClose }) {
             {/* 操作按钮行 */}
             <div style={{ display: "flex", gap: 10 }}>
               {/* 打开原帖 */}
-              <a
-                href={post.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  padding: "11px 0", background: "#FF2442", borderRadius: 10,
-                  color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none",
-                }}
-              >
-                <ExternalLink size={14} /> 打开原帖
-              </a>
+              {post.url ? (
+                <a
+                  href={post.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    padding: "11px 0", background: "#FF2442", borderRadius: 10,
+                    color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none",
+                  }}
+                >
+                  <ExternalLink size={14} /> 打开原帖
+                </a>
+              ) : (
+                <div
+                  style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: "11px 0", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 10,
+                    color: "#666", fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  暂无原帖链接
+                </div>
+              )}
 
               {/* 下载当前图片 */}
               {images.length > 0 && (

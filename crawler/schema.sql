@@ -38,15 +38,38 @@ create table if not exists account_stats_history (
   id           uuid    primary key default gen_random_uuid(),
   account_id   integer not null,
   xhs_user_id  text,
+  date         date,
   followers    integer default 0,
+  likes        integer default 0,
+  views        integer default 0,
+  saves        integer default 0,
   following    integer default 0,
   notes_count  integer default 0,
   collected_at timestamp with time zone default now()
 );
+alter table account_stats_history add column if not exists date date;
+alter table account_stats_history add column if not exists likes integer default 0;
+alter table account_stats_history add column if not exists views integer default 0;
+alter table account_stats_history add column if not exists saves integer default 0;
 create index if not exists idx_ash_account_id   on account_stats_history(account_id);
 create index if not exists idx_ash_collected_at on account_stats_history(collected_at);
+create unique index if not exists idx_ash_account_date_unique on account_stats_history(account_id, date);
 alter table account_stats_history enable row level security;
 create policy "team_access" on account_stats_history for all using (true) with check (true);
+
+-- 6. 对标账号粉丝历史快照（每天一条）
+create table if not exists benchmark_stats_history (
+  id           uuid    primary key default gen_random_uuid(),
+  benchmark_id uuid    not null,
+  date         date    not null,
+  followers    integer default 0,
+  collected_at timestamp with time zone default now()
+);
+create index if not exists idx_bsh_benchmark_id   on benchmark_stats_history(benchmark_id);
+create index if not exists idx_bsh_collected_at   on benchmark_stats_history(collected_at);
+create unique index if not exists idx_bsh_benchmark_date_unique on benchmark_stats_history(benchmark_id, date);
+alter table benchmark_stats_history enable row level security;
+create policy "team_access" on benchmark_stats_history for all using (true) with check (true);
 
 -- 6. 爬取日志（记录每次运行结果，方便排查问题）
 create table if not exists crawl_logs (

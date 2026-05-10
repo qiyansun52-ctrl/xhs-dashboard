@@ -14,17 +14,19 @@ XHS Dashboard 爬虫后台服务
 """
 
 import asyncio
+import importlib.util
 import os
 import sys
 import logging
 import re
 import uuid
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
 # ── 路径配置 ─────────────────────────────────────────────────────────
-MEDIACRAWLER_DIR = "/Users/gabriel/MediaCrawler"
+DEFAULT_MEDIACRAWLER_DIR = os.path.join(os.path.expanduser("~"), "MediaCrawler")
+MEDIACRAWLER_DIR = os.getenv("MEDIACRAWLER_DIR", DEFAULT_MEDIACRAWLER_DIR)
 CRAWLER_DIR = os.path.dirname(os.path.abspath(__file__))
 
 sys.path.insert(0, MEDIACRAWLER_DIR)
@@ -53,9 +55,32 @@ from tools.utils import utils
 import config as mc_config  # MediaCrawler config
 
 # ── Supabase（从 crawler/config.py 读取凭证，该文件已 gitignore）──
+def load_app_config():
+    config_path = os.path.join(CRAWLER_DIR, "config.py")
+    spec = importlib.util.spec_from_file_location("xhs_dashboard_crawler_config", config_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"无法加载爬虫配置: {config_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+app_config = load_app_config()
+SUPABASE_URL = app_config.SUPABASE_URL
+SUPABASE_KEY = app_config.SUPABASE_KEY
 sys.path.insert(0, CRAWLER_DIR)
-from config import SUPABASE_URL, SUPABASE_KEY  # noqa: E402
+from discovery import build_candidate_url, candidate_dedupe_key, score_candidate  # noqa: E402
+from xhs_discovery import delay_between_requests, search_keyword_notes, select_benchmark_accounts  # noqa: E402
+
 sb: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+EXTERNAL_DISCOVERY_ENABLED = getattr(app_config, "EXTERNAL_DISCOVERY_ENABLED", False)
+EXTERNAL_DISCOVERY_MAX_KEYWORD_RESULTS = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_KEYWORD_RESULTS", 20)
+EXTERNAL_DISCOVERY_MAX_BENCHMARK_ACCOUNTS = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_BENCHMARK_ACCOUNTS", 3)
+EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK", 10)
+EXTERNAL_DISCOVERY_MAX_CANDIDATES = getattr(app_config, "EXTERNAL_DISCOVERY_MAX_CANDIDATES", 30)
+EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS = getattr(app_config, "EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS", 2)
+EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES = getattr(app_config, "EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES", 30)
 
 # ── 全局状态 ──────────────────────────────────────────────────────────
 xhs_client: Optional[XiaoHongShuClient] = None
@@ -196,7 +221,10 @@ async def init_xhs_client() -> bool:
             client_ready = True
             return True
         else:
-            log.warning("⚠️  XHS 登录状态失效，请重新扫码：cd /Users/gabriel/MediaCrawler && .venv/bin/python main.py --platform xhs --lt qrcode --type creator")
+            log.warning(
+                "⚠️  XHS 登录状态失效，请重新扫码："
+                f"cd {MEDIACRAWLER_DIR} && .venv/bin/python main.py --platform xhs --lt qrcode --type creator"
+            )
             client_ready = False
             return False
 
@@ -478,6 +506,158 @@ async def process_topics(pending_only: bool = True):
         log.error(f"process_topics 出错: {e}")
 
 
+async def upsert_discovery_candidate(job_id: str, source_path: str, source_meta: Dict[str, Any], post_data: Dict[str, Any]):
+    url = post_data.get("url") or build_candidate_url(post_data.get("xhs_note_id"), source_meta.get("url"))
+    row = {
+        "job_id": job_id,
+        "source_path": source_path,
+        "search_query": source_meta.get("search_query"),
+        "benchmark_account_id": source_meta.get("benchmark_account_id"),
+        "xhs_note_id": post_data.get("xhs_note_id"),
+        "url": url,
+        "title": post_data.get("title") or "",
+        "caption": post_data.get("caption") or "",
+        "cover_image": post_data.get("cover_image"),
+        "images": post_data.get("images") or [],
+        "tags": post_data.get("tags") or [],
+        "author_name": post_data.get("author_name"),
+        "likes": post_data.get("likes") or 0,
+        "saves": post_data.get("saves") or 0,
+        "comments": post_data.get("comments") or 0,
+        "views": post_data.get("views") or 0,
+        "candidate_score": score_candidate(post_data, relevance_score=0.6, source_path=source_path),
+        "ai_reason": source_meta.get("ai_reason") or "与本次问题相关的外部热门参考。",
+    }
+    sb.table("external_discovery_candidates").upsert(row, on_conflict="job_id,url").execute()
+
+
+def recover_stale_external_discovery_jobs():
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(minutes=EXTERNAL_DISCOVERY_RUNNING_TIMEOUT_MINUTES)).isoformat()
+    timestamp = now_iso()
+    sb.table("external_discovery_jobs").update({
+        "status": "failed",
+        "error_message": "外部发现任务运行超时，请重新创建任务。",
+        "finished_at": timestamp,
+        "updated_at": timestamp,
+    }).eq("status", "running").lt("started_at", cutoff_iso).execute()
+
+
+async def process_external_discovery_jobs():
+    if not EXTERNAL_DISCOVERY_ENABLED:
+        return
+    try:
+        if xhs_client is None:
+            return
+        result = (
+            sb.table("external_discovery_jobs")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        jobs = result.data or []
+        if not jobs:
+            return
+
+        for job in jobs:
+            job_id = job["id"]
+            sb.table("external_discovery_jobs").update({
+                "status": "running",
+                "started_at": now_iso(),
+                "updated_at": now_iso(),
+                "error_message": None,
+            }).eq("id", job_id).execute()
+
+            candidates_seen = set()
+            stored_count = 0
+            try:
+                for query in (job.get("search_queries") or [])[:EXTERNAL_DISCOVERY_MAX_KEYWORD_RESULTS]:
+                    notes = await search_keyword_notes(xhs_client, query, limit=EXTERNAL_DISCOVERY_MAX_KEYWORD_RESULTS)
+                    for note in notes:
+                        note_id = note.get("note_id") or note.get("id")
+                        xsec_token = note.get("xsec_token")
+                        url = build_candidate_url(note_id, note.get("url"))
+                        dedupe = candidate_dedupe_key({"xhs_note_id": note_id, "url": url})
+                        if dedupe in candidates_seen:
+                            continue
+                        candidates_seen.add(dedupe)
+                        if not url:
+                            continue
+
+                        fetch_url = url
+                        if xsec_token and "xsec_token" not in fetch_url:
+                            fetch_url = f"{fetch_url}?xsec_token={xsec_token}"
+                        post_data = await fetch_post_data(fetch_url)
+                        post_data["url"] = url
+                        await upsert_discovery_candidate(job_id, "keyword_search", {"search_query": query}, post_data)
+                        stored_count += 1
+                        await delay_between_requests(EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS)
+                        if stored_count >= EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                            break
+                    if stored_count >= EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                        break
+
+                selected_accounts = []
+                if stored_count < EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                    benchmark_rows = (
+                        sb.table("benchmark_accounts")
+                        .select("*")
+                        .eq("fetch_status", "done")
+                        .execute()
+                        .data or []
+                    )
+                    selected_accounts = select_benchmark_accounts(
+                        benchmark_rows,
+                        job.get("search_queries") or [],
+                        max_accounts=EXTERNAL_DISCOVERY_MAX_BENCHMARK_ACCOUNTS,
+                    )
+                for account in selected_accounts:
+                    for post in (account.get("recent_posts") or [])[:EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK]:
+                        if stored_count >= EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                            break
+                        note_id = post.get("note_id") or post.get("id")
+                        url = build_candidate_url(note_id, post.get("url"))
+                        dedupe = candidate_dedupe_key({"xhs_note_id": note_id, "url": url})
+                        if dedupe in candidates_seen or not url:
+                            continue
+                        candidates_seen.add(dedupe)
+                        post_data = dict(post)
+                        post_data.update({
+                            "xhs_note_id": note_id,
+                            "url": url,
+                            "author_name": account.get("name"),
+                        })
+                        await upsert_discovery_candidate(
+                            job_id,
+                            "benchmark_expansion",
+                            {"benchmark_account_id": account["id"]},
+                            post_data,
+                        )
+                        stored_count += 1
+                        if stored_count >= EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                            break
+                    if stored_count >= EXTERNAL_DISCOVERY_MAX_CANDIDATES:
+                        break
+
+                sb.table("external_discovery_jobs").update({
+                    "status": "completed",
+                    "finished_at": now_iso(),
+                    "updated_at": now_iso(),
+                }).eq("id", job_id).execute()
+                log.info(f"  ✅ 外部发现任务完成: {job_id} candidates={stored_count}")
+            except Exception as e:
+                sb.table("external_discovery_jobs").update({
+                    "status": "failed",
+                    "error_message": str(e)[:500],
+                    "finished_at": now_iso(),
+                    "updated_at": now_iso(),
+                }).eq("id", job_id).execute()
+                log.error(f"  ❌ 外部发现任务失败: {e}")
+    except Exception as e:
+        log.error(f"process_external_discovery_jobs 出错: {e}")
+
+
 # ── 定时全量同步 ──────────────────────────────────────────────────────
 
 async def snapshot_account_stats():
@@ -540,10 +720,16 @@ async def poll_loop():
     """每5秒检查一次待处理任务"""
     log.info("轮询启动，每 5 秒检查待处理任务...")
     while True:
+        if EXTERNAL_DISCOVERY_ENABLED:
+            try:
+                recover_stale_external_discovery_jobs()
+            except Exception as e:
+                log.error(f"recover_stale_external_discovery_jobs 出错: {e}")
         if client_ready:
             await process_viral_posts(pending_only=True)
             await process_benchmark_accounts(pending_only=True)
             await process_topics(pending_only=True)
+            await process_external_discovery_jobs()
         await asyncio.sleep(5)
 
 

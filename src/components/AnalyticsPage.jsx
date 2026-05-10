@@ -7,6 +7,21 @@ import {
 import { supabase } from "../supabase.js";
 import { useIsMobile } from "./shared.jsx";
 
+const VIRAL_POST_COLUMNS = [
+  "id",
+  "title",
+  "caption",
+  "cover_image",
+  "images",
+  "country",
+  "likes",
+  "saves",
+  "comments",
+  "views",
+  "fetch_status",
+  "created_at",
+].join(", ");
+
 function fmt(n) {
   if (!n) return "0";
   if (n >= 10000) return (n / 10000).toFixed(1) + "w";
@@ -267,7 +282,7 @@ function ViralAnalyticsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from("viral_posts").select("*").eq("fetch_status", "done")
+    supabase.from("viral_posts").select(VIRAL_POST_COLUMNS).eq("fetch_status", "done")
       .then(({ data }) => { if (data) setPosts(data); setLoading(false); });
   }, []);
 

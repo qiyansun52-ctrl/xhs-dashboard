@@ -1,0 +1,16 @@
+[
+  {
+    "id": "q001",
+    "question": "帮我找适合英国留学申请焦虑方向的素材",
+    "expected_source_ids": [],
+    "good_answer": "应该召回英国、申请焦虑、文书或时间线相关素材，并说明标题或内容方向。",
+    "difficulty": "semantic"
+  },
+  {
+    "id": "q002",
+    "question": "我们过去写过哪些文书相关内容比较容易出收藏？",
+    "expected_source_ids": [],
+    "good_answer": "应该优先返回 team_post，并参考 saves_count 排序。",
+    "difficulty": "cross-source"
+  }
+]

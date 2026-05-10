@@ -139,9 +139,14 @@ npm run dev                 # http://localhost:5173
 cd crawler
 cp config.example.py config.py   # fill SUPABASE_URL, SUPABASE_KEY, ACCOUNT_MAP
 chmod +x setup_autostart.sh
-./setup_autostart.sh             # installs LaunchAgent, starts immediately
+./setup_autostart.sh             # installs LaunchAgent for this checkout
+# MEDIACRAWLER_DIR=/path/to/MediaCrawler ./setup_autostart.sh
 tail -f logs/server.log          # verify "✅ XHS 客户端初始化成功"
 ```
+
+**Optional AI external discovery loop**
+
+After the core schema is installed, run `crawler/ai_schema.sql` in Supabase SQL Editor. Once crawler login is validated, set `EXTERNAL_DISCOVERY_ENABLED = True` in `crawler/config.py`, keep `EXTERNAL_DISCOVERY_TRIGGER_MODE = "ask_first"` until crawl quality is reviewed, then start both `crawler/server.py` and `crawler/ai_api.py`. In AI Search, ask a sparse question, click `去小红书找参考`, review candidates, and approve useful items.
 
 ### Design choices worth calling out
 
@@ -277,9 +282,14 @@ npm run dev                 # http://localhost:5173
 cd crawler
 cp config.example.py config.py   # 填入 SUPABASE_URL、SUPABASE_KEY、ACCOUNT_MAP
 chmod +x setup_autostart.sh
-./setup_autostart.sh             # 安装 LaunchAgent 并立即启动
+./setup_autostart.sh             # 为当前仓库路径安装 LaunchAgent
+# MEDIACRAWLER_DIR=/path/to/MediaCrawler ./setup_autostart.sh
 tail -f logs/server.log          # 看到 "✅ XHS 客户端初始化成功" 即可
 ```
+
+**可选：AI 外部发现闭环**
+
+核心 schema 执行完成后，在 Supabase SQL Editor 中继续执行 `crawler/ai_schema.sql`。确认爬虫登录态可用后，在 `crawler/config.py` 中设置 `EXTERNAL_DISCOVERY_ENABLED = True`，并先保持 `EXTERNAL_DISCOVERY_TRIGGER_MODE = "ask_first"`，等人工确认抓取质量后再调整。然后同时启动 `crawler/server.py` 和 `crawler/ai_api.py`，在 AI Search 里提一个信息较少的问题，点击 `去小红书找参考`，检查候选结果并批准有用素材。
 
 ### 值得一提的设计取舍
 

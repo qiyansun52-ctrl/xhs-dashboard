@@ -27,3 +27,52 @@ MAX_NOTES_PER_ACCOUNT = 30
 
 # 两次请求之间的间隔秒数（模拟人工，降低风控风险）
 REQUEST_DELAY_SECONDS = 2
+
+# ── AI API 服务（ai_api.py 使用）──────────────────────────────
+# Voyage AI（embedding 模型，注册：https://dash.voyageai.com）
+VOYAGE_API_KEY = "pa-xxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 前后端共享的内部 API key，前端通过 VITE_AI_API_KEY 传同一个值
+# 随便生成一段长字符串即可（python -c "import secrets; print(secrets.token_urlsafe(32))"）
+AI_API_KEY = "change-me-to-a-long-random-string"
+
+# AI API 监听地址（默认本地 8001，避免与其他服务冲突）
+AI_API_HOST = "127.0.0.1"
+AI_API_PORT = 8001
+
+# 允许跨域的前端来源（开发 + 生产，按需增减）
+AI_API_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+# ── AI 搜索中心：生成与图片理解 ─────────────────────────────────
+# 不配置 OPENAI_API_KEY 时，/ai/research 会返回基于检索结果的保守 fallback 答案
+OPENAI_API_KEY = ""
+OPENAI_TEXT_MODEL = "gpt-4.1-mini"
+OPENAI_VISION_MODEL = "gpt-4.1-mini"
+
+# 检索阈值，可根据 golden set 调整。
+# AI_RESEARCH_MIN_SIMILARITY 用 voyage-3-lite 余弦相似度衡量；
+# RRF 分数与之不可比，is_sparse_result 内部已分开判定。
+AI_RESEARCH_MIN_RESULTS = 3
+AI_RESEARCH_MIN_SIMILARITY = 0.55
+
+# ── AI 外部发现闭环 ─────────────────────────────────────────────
+# 默认关闭。确认 schema、AI API、爬虫搜索能力都可用后再打开。
+EXTERNAL_DISCOVERY_ENABLED = False
+
+# ask_first: AI 先给内部回答，用户点击后才创建发现任务。
+# auto_after_sparse: 内部匹配不足时自动创建发现任务，但候选仍需人工审核才能入库。
+EXTERNAL_DISCOVERY_TRIGGER_MODE = "ask_first"
+
+# 每个发现任务的爬取上限。先保守，避免影响小红书登录态和风控。
+EXTERNAL_DISCOVERY_MAX_QUERIES = 4
+EXTERNAL_DISCOVERY_MAX_KEYWORD_RESULTS = 20
+EXTERNAL_DISCOVERY_MAX_BENCHMARK_ACCOUNTS = 3
+EXTERNAL_DISCOVERY_MAX_POSTS_PER_BENCHMARK = 10
+EXTERNAL_DISCOVERY_MAX_CANDIDATES = 30
+EXTERNAL_DISCOVERY_REQUEST_DELAY_SECONDS = 2
+
+# 24 小时内相似搜索复用已有 job，减少重复爬取。
+EXTERNAL_DISCOVERY_REUSE_WINDOW_HOURS = 24

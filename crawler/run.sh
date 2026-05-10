@@ -10,7 +10,7 @@
 set -e  # 任何步骤出错就停止
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MEDIACRAWLER_DIR="/Users/gabriel/MediaCrawler"
+MEDIACRAWLER_DIR="${MEDIACRAWLER_DIR:-$HOME/MediaCrawler}"
 LOG_FILE="$SCRIPT_DIR/logs/run_$(date +%Y%m%d_%H%M%S).log"
 DRY_RUN=${1:-""}
 
@@ -26,7 +26,7 @@ echo "▶ Step 1: 运行 MediaCrawler 爬取账号数据..."
 
 if [ ! -d "$MEDIACRAWLER_DIR" ]; then
     echo "❌ MediaCrawler 目录不存在: $MEDIACRAWLER_DIR"
-    echo "   请修改 run.sh 中的 MEDIACRAWLER_DIR 路径"
+    echo "   可用 MEDIACRAWLER_DIR=/path/to/MediaCrawler ./run.sh 指定"
     exit 1
 fi
 
