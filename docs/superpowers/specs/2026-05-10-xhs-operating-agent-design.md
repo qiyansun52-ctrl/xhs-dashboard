@@ -1,5 +1,7 @@
 # XHS Operating Agent Design
 
+> 首期功能优先级、Agent 工作台 UI/UX 与落地分期见 `docs/superpowers/specs/2026-05-16-ui-visual-polish-design.md` 第 11 节。本文档是能力架构与策略边界的权威来源。
+
 ## Summary
 
 Build a semi-automatic, general-purpose Xiaohongshu operations agent for the dashboard.
