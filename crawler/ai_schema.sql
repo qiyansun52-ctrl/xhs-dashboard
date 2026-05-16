@@ -248,6 +248,33 @@ alter table agent_steps enable row level security;
 drop policy if exists "team_access" on agent_steps;
 create policy "team_access" on agent_steps for all using (true) with check (true);
 
+create table if not exists agent_review_actions (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references agent_runs(id) on delete cascade,
+  action_type text not null check (action_type in ('approve_candidate', 'save_note', 'add_calendar_item', 'save_draft', 'mark_template')),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+  payload jsonb not null default '{}'::jsonb,
+  rationale text,
+  evidence_score double precision,
+  duplicate_warning text,
+  review_reason text check (
+    review_reason is null or review_reason in ('不相关', '低质量', '疑似广告', '重复素材', '不适合团队调性', '数据异常', '已入库')
+  ),
+  reviewed_by_member_id uuid,
+  created_at timestamptz default now(),
+  reviewed_at timestamptz
+);
+
+create index if not exists idx_agent_review_actions_status_created_at
+  on agent_review_actions(status, created_at desc);
+
+create index if not exists idx_agent_review_actions_run_created_at
+  on agent_review_actions(run_id, created_at desc);
+
+alter table agent_review_actions enable row level security;
+drop policy if exists "team_access" on agent_review_actions;
+create policy "team_access" on agent_review_actions for all using (true) with check (true);
+
 create table if not exists tool_invocations (
   idempotency_key text primary key,
   tool_name text not null,

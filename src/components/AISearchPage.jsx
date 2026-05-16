@@ -17,7 +17,10 @@ import {
   getEvidenceQuality,
   shouldAutoCreateDiscovery,
 } from "../aiDiscovery.js";
-import { inputStyle, useIsMobile } from "./shared.jsx";
+import {
+  inputStyle, useIsMobile, Card,
+  createGlassCardStyle, createPrimaryButtonStyle, designTokens,
+} from "./shared.jsx";
 import ViralPostDrawer from "./ViralPostDrawer.jsx";
 
 const SOURCE_TYPE_LABELS = {
@@ -86,6 +89,7 @@ function getEvidenceStatus(answer) {
 function SourceCard({ source, onOpen }) {
   const canOpenDetails = Boolean(source.title || source.content || source.summary || source.image_urls?.length);
   const canOpenUrl = hasValidUrl(source.source_url);
+  const thumbnail = Array.isArray(source.image_urls) ? source.image_urls[0] : null;
 
   return (
     <div
@@ -100,29 +104,47 @@ function SourceCard({ source, onOpen }) {
         }
       }}
       style={{
-        background: "#111",
-        border: "1px solid #1e1e1e",
+        ...createGlassCardStyle({ interactive: canOpenDetails, padding: 12, radius: 10 }),
         borderRadius: 10,
-        padding: 12,
         cursor: canOpenDetails ? "pointer" : "default",
       }}
     >
-      <div style={{ fontSize: 11, color: "#FF2442", marginBottom: 6 }}>
-        {SOURCE_TYPE_LABELS[source.source_type] || source.source_type}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#e0e0e0", marginBottom: 6 }}>
-        {source.title || "无标题"}
-      </div>
-      <div style={{
-        fontSize: 12,
-        color: "#666",
-        lineHeight: 1.6,
-        display: "-webkit-box",
-        WebkitLineClamp: 3,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
-      }}>
-        {source.summary || source.content || "暂无摘要"}
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <div style={{
+          width: 58,
+          height: 72,
+          borderRadius: 8,
+          overflow: "hidden",
+          background: "rgba(255,255,255,0.04)",
+          border: `1px solid ${designTokens.color.cardBorder}`,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: designTokens.color.textFaint,
+          fontSize: 18,
+        }}>
+          {thumbnail ? <img src={thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "源"}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: "#FF2442", marginBottom: 6 }}>
+            {SOURCE_TYPE_LABELS[source.source_type] || source.source_type}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#e0e0e0", marginBottom: 6 }}>
+            {source.title || "无标题"}
+          </div>
+          <div style={{
+            fontSize: 12,
+            color: "#888",
+            lineHeight: 1.6,
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}>
+            {source.summary || source.content || "暂无摘要"}
+          </div>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 10, fontSize: 11, color: "#444", flexWrap: "wrap" }}>
         {source.likes_count != null && <span>赞 {source.likes_count}</span>}
@@ -167,7 +189,7 @@ function SourceCard({ source, onOpen }) {
 
 function SectionCard({ title, children }) {
   return (
-    <section style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 10, padding: 16 }}>
+    <section style={{ ...createGlassCardStyle({ padding: 16, radius: 10 }) }}>
       <div style={{ fontSize: 11, color: "#555", marginBottom: 10 }}>{title}</div>
       {children}
     </section>
@@ -405,6 +427,8 @@ function AnswerView({ answer, onSave, savingNote, isMobile }) {
   if (!answer) return null;
 
   const evidenceStatus = getEvidenceStatus(answer);
+  const evidenceQuality = getEvidenceQuality(answer);
+  const evidencePercent = { empty: 12, weak: 48, strong: 92 }[evidenceQuality] || 70;
   const citedIds = new Set((answer.cited_sources || []).map(source => source.id));
   const relatedSources = (answer.related_sources || [])
     .filter(source => !citedIds.has(source.id))
@@ -439,6 +463,16 @@ function AnswerView({ answer, onSave, savingNote, isMobile }) {
             {evidenceStatus.label}
           </div>
           <div>{evidenceStatus.description}</div>
+          <div style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,0.08)", marginTop: 10, overflow: "hidden" }}>
+            <div style={{
+              width: `${evidencePercent}%`,
+              height: "100%",
+              borderRadius: 999,
+              background: evidenceStatus.color,
+              boxShadow: `0 0 14px ${evidenceStatus.color}66`,
+              transition: "width 220ms ease",
+            }} />
+          </div>
           {answer.trace_id && (
             <div style={{ marginTop: 6, color: "#555", fontSize: 11 }}>
               Trace {answer.trace_id.slice(0, 8)}
@@ -793,13 +827,14 @@ export default function AISearchPage() {
   return (
     <div style={{ padding: isMobile ? 16 : 32, maxWidth: 1220, margin: isMobile ? 0 : "0 auto" }}>
       <div style={{ marginBottom: 22 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#fff", margin: "0 0 6px" }}>AI 搜索中心</h1>
+        <h1 style={{ ...designTokens.type.pageTitle, margin: "0 0 6px" }}>AI 搜索中心</h1>
         <p style={{ fontSize: 13, color: "#555", margin: 0 }}>找素材 · 找经验 · 看图找参考</p>
       </div>
 
       <div style={{
-        background: "linear-gradient(180deg, rgba(255,36,66,0.06), rgba(17,17,17,1) 36%)",
-        border: "1px solid #1e1e1e",
+        background: "linear-gradient(180deg, rgba(255,36,66,0.09), rgba(255,255,255,0.03) 42%)",
+        border: `1px solid ${designTokens.color.cardBorder}`,
+        boxShadow: designTokens.shadow.card,
         borderRadius: 12,
         padding: 16,
         marginBottom: 20,
@@ -851,15 +886,11 @@ export default function AISearchPage() {
             onClick={handleSubmit}
             disabled={loading}
             style={{
+              ...createPrimaryButtonStyle({ disabled: loading }),
               display: "flex",
               alignItems: "center",
               gap: 8,
               padding: "10px 18px",
-              borderRadius: 8,
-              border: "none",
-              background: loading ? "#333" : "#FF2442",
-              color: "#fff",
-              cursor: loading ? "not-allowed" : "pointer",
               fontSize: 13,
               fontWeight: 700,
             }}

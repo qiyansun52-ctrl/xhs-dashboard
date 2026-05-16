@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit, urlunsplit
 
@@ -42,6 +42,8 @@ def _config_value(name: str, default: Any) -> Any:
 OPENAI_API_KEY = _config_value("OPENAI_API_KEY", "")
 OPENAI_TEXT_MODEL = _config_value("OPENAI_TEXT_MODEL", "gpt-4.1-mini")
 OPENAI_VISION_MODEL = _config_value("OPENAI_VISION_MODEL", "gpt-4.1-mini")
+DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+DEFAULT_GEMINI_MODEL = "gemini-3-pro-preview"
 AI_RESEARCH_MIN_RESULTS = _config_value("AI_RESEARCH_MIN_RESULTS", 3)
 AI_RESEARCH_MIN_SIMILARITY = _config_value("AI_RESEARCH_MIN_SIMILARITY", 0.55)
 EXTERNAL_DISCOVERY_ENABLED = _config_value("EXTERNAL_DISCOVERY_ENABLED", False)
@@ -107,12 +109,108 @@ def model_to_dict(model) -> Dict[str, Any]:
     return model.dict()
 
 
+@dataclass(frozen=True)
+class LlmSettings:
+    provider: str
+    api_key: str
+    base_url: Optional[str]
+    text_model: str
+    vision_model: str
+
+
+def _read_config_or_env(config_obj: Any, env: Dict[str, str], name: str, default: str = "") -> str:
+    value = getattr(config_obj, name, None) if config_obj else None
+    if value is None or str(value).strip() == "":
+        value = env.get(name, default)
+    return str(value or "").strip()
+
+
+def resolve_llm_settings(config_obj: Any = None, env: Optional[Dict[str, str]] = None) -> LlmSettings:
+    config_obj = app_config if config_obj is None else config_obj
+    env = os.environ if env is None else env
+
+    provider = _read_config_or_env(config_obj, env, "LLM_PROVIDER", "auto").lower() or "auto"
+    gemini_key = _read_config_or_env(config_obj, env, "GEMINI_API_KEY")
+    openai_key = _read_config_or_env(config_obj, env, "OPENAI_API_KEY", OPENAI_API_KEY)
+
+    if provider == "auto":
+        provider = "gemini" if gemini_key else "openai"
+    if provider not in ("gemini", "openai"):
+        provider = "openai"
+
+    if provider == "gemini":
+        return LlmSettings(
+            provider="gemini",
+            api_key=gemini_key,
+            base_url=_read_config_or_env(config_obj, env, "GEMINI_BASE_URL", DEFAULT_GEMINI_BASE_URL) or DEFAULT_GEMINI_BASE_URL,
+            text_model=_read_config_or_env(config_obj, env, "GEMINI_TEXT_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL,
+            vision_model=_read_config_or_env(config_obj, env, "GEMINI_VISION_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL,
+        )
+
+    return LlmSettings(
+        provider="openai",
+        api_key=openai_key,
+        base_url=_read_config_or_env(config_obj, env, "OPENAI_BASE_URL") or None,
+        text_model=_read_config_or_env(config_obj, env, "OPENAI_TEXT_MODEL", OPENAI_TEXT_MODEL) or OPENAI_TEXT_MODEL,
+        vision_model=_read_config_or_env(config_obj, env, "OPENAI_VISION_MODEL", OPENAI_VISION_MODEL) or OPENAI_VISION_MODEL,
+    )
+
+
 class ResearchService:
     def __init__(self, supabase_client, embed_texts):
         self.sb = supabase_client
         self.embed_texts = embed_texts
-        self.openai_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
-        self.openai = OpenAI(api_key=self.openai_key) if self.openai_key and OpenAI else None
+        self.llm_settings = resolve_llm_settings()
+        self.llm_provider = self.llm_settings.provider
+        self.text_model = self.llm_settings.text_model
+        self.vision_model = self.llm_settings.vision_model
+        self.openai_key = self.llm_settings.api_key
+        self.openai = self._create_openai_compatible_client()
+
+    def _create_openai_compatible_client(self):
+        if not self.openai_key or not OpenAI:
+            return None
+        kwargs = {"api_key": self.openai_key}
+        if self.llm_settings.base_url:
+            kwargs["base_url"] = self.llm_settings.base_url
+        return OpenAI(**kwargs)
+
+    def _chat_json_response_format(self, name: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "strict": True,
+                "schema": schema,
+            },
+        }
+
+    def _extract_chat_content(self, resp: Any) -> str:
+        message = resp.choices[0].message
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        return content or "{}"
+
+    def _create_structured_chat_completion(
+        self,
+        *,
+        model: str,
+        system_message: Optional[str],
+        user_content: Any,
+        schema_name: str,
+        schema: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": user_content})
+        resp = self.openai.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format=self._chat_json_response_format(schema_name, schema),
+        )
+        return json.loads(self._extract_chat_content(resp))
 
     async def research(self, req: ResearchRequest) -> ResearchAnswer:
         task_type = detect_task_type(req.question, has_image=bool(req.image_url))
@@ -462,27 +560,19 @@ class ResearchService:
             }
 
             def _call():
-                return self.openai.responses.create(
-                    model=OPENAI_VISION_MODEL,
-                    input=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "input_text", "text": "请分析这张小红书配图，输出可用于留学内容选题检索的结构化 JSON。"},
-                            {"type": "input_image", "image_url": image_url, "detail": "auto"},
-                        ],
-                    }],
-                    text={
-                        "format": {
-                            "type": "json_schema",
-                            "name": "image_analysis",
-                            "strict": True,
-                            "schema": schema,
-                        }
-                    },
+                return self._create_structured_chat_completion(
+                    model=self.vision_model,
+                    system_message=None,
+                    user_content=[
+                        {"type": "text", "text": "请分析这张小红书配图，输出可用于留学内容选题检索的结构化 JSON。"},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                    schema_name="image_analysis",
+                    schema=schema,
                 )
 
-            resp = await asyncio.to_thread(_call)
-            return ImageAnalysis(**json.loads(resp.output_text))
+            payload = await asyncio.to_thread(_call)
+            return ImageAnalysis(**payload)
 
         return ImageAnalysis(
             subject="",
@@ -574,22 +664,15 @@ class ResearchService:
         }
 
         def _call():
-            return self.openai.responses.create(
-                model=OPENAI_TEXT_MODEL,
-                instructions="你是小红书留学内容团队的 AI 素材研究员。你必须输出符合 schema 的 JSON，且不得编造 allowed_sources 之外的素材。",
-                input=json.dumps(prompt, ensure_ascii=False),
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "research_answer",
-                        "strict": True,
-                        "schema": schema,
-                    }
-                },
+            return self._create_structured_chat_completion(
+                model=self.text_model,
+                system_message="你是小红书留学内容团队的 AI 素材研究员。你必须输出符合 schema 的 JSON，且不得编造 allowed_sources 之外的素材。",
+                user_content=json.dumps(prompt, ensure_ascii=False),
+                schema_name="research_answer",
+                schema=schema,
             )
 
-        resp = await asyncio.to_thread(_call)
-        return json.loads(resp.output_text)
+        return await asyncio.to_thread(_call)
 
     def generate_fallback_answer(
         self,
@@ -725,22 +808,15 @@ class ResearchService:
         }
 
         def _call():
-            return self.openai.responses.create(
-                model=OPENAI_TEXT_MODEL,
-                instructions="你是小红书留学内容团队的 AI 外部素材研究员。你必须输出符合 schema 的 JSON，且不得编造 allowed_candidates 之外的素材。",
-                input=json.dumps(prompt, ensure_ascii=False),
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "external_supplement_answer",
-                        "strict": True,
-                        "schema": schema,
-                    }
-                },
+            return self._create_structured_chat_completion(
+                model=self.text_model,
+                system_message="你是小红书留学内容团队的 AI 外部素材研究员。你必须输出符合 schema 的 JSON，且不得编造 allowed_candidates 之外的素材。",
+                user_content=json.dumps(prompt, ensure_ascii=False),
+                schema_name="external_supplement_answer",
+                schema=schema,
             )
 
-        resp = await asyncio.to_thread(_call)
-        payload = json.loads(resp.output_text)
+        payload = await asyncio.to_thread(_call)
         validated = validate_external_candidate_ids(payload, allowed_candidate_ids=allowed_ids)
         return ExternalSupplementAnswer(
             job_id=job_id,

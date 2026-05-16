@@ -48,7 +48,17 @@ AI_API_CORS_ORIGINS = [
 ]
 
 # ── AI 搜索中心：生成与图片理解 ─────────────────────────────────
-# 不配置 OPENAI_API_KEY 时，/ai/research 会返回基于检索结果的保守 fallback 答案
+# LLM_PROVIDER 可选：gemini / openai / auto。模型供应商密钥只放后端，不放前端 .env。
+# 不配置任何模型供应商 key 时，/ai/research 会返回基于检索结果的保守 fallback 答案。
+LLM_PROVIDER = "auto"
+
+# Gemini 3（Google AI Studio API key）
+GEMINI_API_KEY = ""
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GEMINI_TEXT_MODEL = "gemini-3-pro-preview"
+GEMINI_VISION_MODEL = "gemini-3-pro-preview"
+
+# OpenAI 备用配置
 OPENAI_API_KEY = ""
 OPENAI_TEXT_MODEL = "gpt-4.1-mini"
 OPENAI_VISION_MODEL = "gpt-4.1-mini"

@@ -5,7 +5,7 @@ import {
   Legend, ResponsiveContainer,
 } from "recharts";
 import { supabase } from "../supabase.js";
-import { useIsMobile } from "./shared.jsx";
+import { Card, CountUpNumber, EmptyState, createGlassCardStyle, designTokens, useIsMobile } from "./shared.jsx";
 
 const VIRAL_POST_COLUMNS = [
   "id",
@@ -40,13 +40,15 @@ function fmtDate(s) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function StatCard({ label, value, color = "#e0e0e0", sub }) {
+function StatCard({ label, value, rawValue, color = "#e0e0e0", sub }) {
   return (
-    <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 10, padding: "14px 16px" }}>
+    <Card style={{ padding: "14px 16px", borderRadius: 10 }}>
       <div style={{ fontSize: 11, color: "#444", marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color }}>
+        {rawValue == null ? value : <CountUpNumber value={rawValue} />}
+      </div>
       {sub && <div style={{ fontSize: 11, color: "#333", marginTop: 4 }}>{sub}</div>}
-    </div>
+    </Card>
   );
 }
 
@@ -57,7 +59,7 @@ const chartTooltipStyle = {
 /* ─────────────────────────────────
    Tab 1: 自有账号
 ───────────────────────────────── */
-function OwnAccountsTab({ accounts }) {
+function OwnAccountsTab({ accounts, rangeDays }) {
   const isMobile = useIsMobile();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ function OwnAccountsTab({ accounts }) {
       accounts.forEach(a => { pt[a.name] = a.followers || 0; });
       return [pt];
     }
-    return points;
+    return points.slice(-rangeDays);
   })();
 
   const totals = {
@@ -97,19 +99,20 @@ function OwnAccountsTab({ accounts }) {
   };
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
+  if (accounts.length === 0) return <EmptyState title="暂无账号数据" description="添加账号后，这里会展示粉丝增长和互动趋势。" />;
 
   return (
     <div>
       {/* Summary */}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 2 : 4},1fr)`, gap: 12, marginBottom: 24 }}>
-        <StatCard label="总粉丝" value={fmt(totals.followers)} color="#FF2442" />
-        <StatCard label="总点赞" value={fmt(totals.likes)}     color="#FF7A7A" />
-        <StatCard label="总浏览" value={fmt(totals.views)}     color="#54A0FF" />
-        <StatCard label="总收藏" value={fmt(totals.saves)}     color="#A29BFE" />
+        <StatCard label="总粉丝" rawValue={totals.followers} color="#FF2442" />
+        <StatCard label="总点赞" rawValue={totals.likes}     color="#FF7A7A" />
+        <StatCard label="总浏览" rawValue={totals.views}     color="#54A0FF" />
+        <StatCard label="总收藏" rawValue={totals.saves}     color="#A29BFE" />
       </div>
 
       {/* Followers trend */}
-      <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: "20px 20px 12px", marginBottom: 16 }}>
+      <Card style={{ padding: "20px 20px 12px", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#666" }}>粉丝增长趋势</span>
           {history.length <= 1 && (
@@ -130,12 +133,12 @@ function OwnAccountsTab({ accounts }) {
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       {/* Per-account cards */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,1fr)", gap: 12 }}>
         {accounts.map((acc, i) => (
-          <div key={acc.id} style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: 16 }}>
+          <Card key={acc.id} style={{ padding: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
               <div style={{
                 width: 36, height: 36, borderRadius: "50%",
@@ -161,7 +164,7 @@ function OwnAccountsTab({ accounts }) {
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>
@@ -171,7 +174,7 @@ function OwnAccountsTab({ accounts }) {
 /* ─────────────────────────────────
    Tab 2: 对标账号
 ───────────────────────────────── */
-function BenchmarkTrendTab() {
+function BenchmarkTrendTab({ rangeDays }) {
   const isMobile = useIsMobile();
   const [benchmarks, setBenchmarks] = useState([]);
   const [history, setHistory]       = useState([]);
@@ -207,20 +210,18 @@ function BenchmarkTrendTab() {
       benchmarks.forEach(b => { pt[b.name] = b.followers || 0; });
       return [pt];
     }
-    return points;
+    return points.slice(-rangeDays);
   })();
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
   if (benchmarks.length === 0) return (
-    <div style={{ color: "#333", padding: "60px 0", textAlign: "center", fontSize: 13 }}>
-      暂无对标账号数据，前往「素材库」添加
-    </div>
+    <EmptyState title="暂无对标账号数据" description="前往素材库添加对标账号后，这里会展示增长对比。" />
   );
 
   return (
     <div>
       {/* Trend chart */}
-      <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: "20px 20px 12px", marginBottom: 16 }}>
+      <Card style={{ padding: "20px 20px 12px", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#666" }}>粉丝增长对比</span>
           {history.length <= 1 && <span style={{ fontSize: 11, color: "#333" }}>数据积累中，每天自动记录</span>}
@@ -239,10 +240,10 @@ function BenchmarkTrendTab() {
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       {/* Ranking */}
-      <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, overflow: "hidden" }}>
+      <Card style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid #1a1a1a", fontSize: 12, fontWeight: 600, color: "#666" }}>
           粉丝排行
         </div>
@@ -267,7 +268,7 @@ function BenchmarkTrendTab() {
             </div>
           </div>
         ))}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -301,24 +302,22 @@ function ViralAnalyticsTab() {
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
   if (posts.length === 0) return (
-    <div style={{ color: "#333", padding: "60px 0", textAlign: "center", fontSize: 13 }}>
-      暂无爆款帖子数据，前往「素材库」添加
-    </div>
+    <EmptyState title="暂无爆款帖子数据" description="前往素材库添加爆款收藏后，这里会展示地区分布和 TOP 帖子。" />
   );
 
   return (
     <div>
       {/* Summary */}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${isMobile ? 2 : 4},1fr)`, gap: 12, marginBottom: 24 }}>
-        <StatCard label="收录帖子" value={posts.length}       color="#e0e0e0" />
-        <StatCard label="平均点赞" value={fmt(avg("likes"))}  color="#FF7A7A" />
-        <StatCard label="平均收藏" value={fmt(avg("saves"))}  color="#A29BFE" />
-        <StatCard label="平均评论" value={fmt(avg("comments"))} color="#54A0FF" />
+        <StatCard label="收录帖子" rawValue={posts.length}       color="#e0e0e0" />
+        <StatCard label="平均点赞" rawValue={avg("likes")}  color="#FF7A7A" />
+        <StatCard label="平均收藏" rawValue={avg("saves")}  color="#A29BFE" />
+        <StatCard label="平均评论" rawValue={avg("comments")} color="#54A0FF" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px 1fr", gap: 16 }}>
         {/* Country breakdown */}
-        <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: 16 }}>
+        <Card style={{ padding: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#666", marginBottom: 14 }}>地区分布</div>
           {countryData.length === 0
             ? <div style={{ fontSize: 12, color: "#333" }}>暂无地区数据</div>
@@ -338,10 +337,10 @@ function ViralAnalyticsTab() {
                 );
               })
           }
-        </div>
+        </Card>
 
         {/* Top posts */}
-        <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, overflow: "hidden" }}>
+        <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "12px 18px", borderBottom: "1px solid #1a1a1a", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "#666" }}>TOP 帖子</span>
             <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
@@ -387,7 +386,7 @@ function ViralAnalyticsTab() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );
@@ -399,6 +398,7 @@ function ViralAnalyticsTab() {
 export default function AnalyticsPage({ accounts }) {
   const isMobile = useIsMobile();
   const [tab, setTab] = useState("own");
+  const [rangeDays, setRangeDays] = useState(30);
 
   const tabs = [
     { key: "own",       label: "自有账号" },
@@ -409,24 +409,39 @@ export default function AnalyticsPage({ accounts }) {
   return (
     <div style={{ padding: isMobile ? "16px" : "24px 32px" }}>
       <div style={{ marginBottom: 22 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>数据监控</h1>
+        <h1 style={{ ...designTokens.type.pageTitle, margin: "0 0 4px" }}>数据监控</h1>
         <p style={{ fontSize: 12, color: "#444", margin: 0 }}>账号增长趋势 · 对标动态 · 爆款内容分析</p>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "#0d0d0d", padding: 4, borderRadius: 10, width: "fit-content" }}>
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            padding: "7px 20px", borderRadius: 7, border: "none", cursor: "pointer",
-            background: tab === t.key ? "#1e1e1e" : "transparent",
-            color: tab === t.key ? "#e0e0e0" : "#555",
-            fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
-          }}>{t.label}</button>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.025)", padding: 4, borderRadius: 10, border: `1px solid ${designTokens.color.cardBorder}` }}>
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              padding: "7px 20px", borderRadius: 7, border: "none", cursor: "pointer",
+              background: tab === t.key ? "rgba(255,36,66,0.12)" : "transparent",
+              color: tab === t.key ? "#FF2442" : "#555",
+              fontSize: 13, fontWeight: tab === t.key ? 600 : 400,
+            }}>{t.label}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.025)", padding: 4, borderRadius: 10, border: `1px solid ${designTokens.color.cardBorder}` }}>
+          {[7, 30, 90].map(days => (
+            <button key={days} onClick={() => setRangeDays(days)} style={{
+              padding: "7px 12px",
+              borderRadius: 7,
+              border: "none",
+              background: rangeDays === days ? "rgba(255,255,255,0.09)" : "transparent",
+              color: rangeDays === days ? "#fff" : designTokens.color.textMuted,
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: rangeDays === days ? 700 : 500,
+            }}>{days}d</button>
+          ))}
+        </div>
       </div>
 
-      {tab === "own"       && <OwnAccountsTab accounts={accounts} />}
-      {tab === "benchmark" && <BenchmarkTrendTab />}
+      {tab === "own"       && <OwnAccountsTab accounts={accounts} rangeDays={rangeDays} />}
+      {tab === "benchmark" && <BenchmarkTrendTab rangeDays={rangeDays} />}
       {tab === "viral"     && <ViralAnalyticsTab />}
     </div>
   );

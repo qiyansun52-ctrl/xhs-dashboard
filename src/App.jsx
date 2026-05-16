@@ -1,7 +1,16 @@
 import { Suspense, lazy, useState, useEffect } from "react";
 import { FileText, Users2, CalendarDays, BookOpen, BarChart2, Plus, X, UserCircle, Sparkles } from "lucide-react";
 import { supabase } from "./supabase.js";
-import { ROLE_LABELS, inputStyle, useIsMobile } from "./components/shared.jsx";
+import {
+  ROLE_LABELS,
+  Skeleton,
+  ToastViewport,
+  createGlassCardStyle,
+  createPrimaryButtonStyle,
+  designTokens,
+  inputStyle,
+  useIsMobile,
+} from "./components/shared.jsx";
 
 const ContentManager = lazy(() => import("./components/ContentManager.jsx"));
 const AccountsPage = lazy(() => import("./components/AccountsPage.jsx"));
@@ -30,12 +39,7 @@ const ACCOUNT_LIST_COLUMNS = [
 function PageFallback({ isMobile }) {
   return (
     <div style={{ padding: isMobile ? 16 : 32 }}>
-      <div style={{
-        height: 90,
-        border: "1px solid #1e1e1e",
-        borderRadius: 12,
-        background: "linear-gradient(90deg, #101010, #161616, #101010)",
-      }} />
+      <Skeleton height={90} radius={12} />
     </div>
   );
 }
@@ -123,6 +127,8 @@ export default function App() {
   const [accounts, setAccounts] = useState([]);
   const [members, setMembers]   = useState([]);
   const [showJoin, setShowJoin] = useState(false);
+  const [hoveredNav, setHoveredNav] = useState(null);
+  const [hoveredAccountId, setHoveredAccountId] = useState(null);
   const agentModeEnabled = String(import.meta.env.VITE_AGENT_RUNTIME_ENABLED || "true").toLowerCase() !== "false";
   const shouldRenderAi = hasOpenedAi || view === "ai";
 
@@ -161,59 +167,90 @@ export default function App() {
   return (
     <div style={{
       fontFamily: "'DM Sans', system-ui, sans-serif",
-      background: "#0a0a0a", color: "#e0e0e0",
+      background: designTokens.color.pageBackground, color: designTokens.color.textPrimary,
       minHeight: "100vh", display: "flex",
       flexDirection: isMobile ? "column" : "row",
       }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 1s linear infinite; }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(8px); } to { transform: translateY(0); } }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(255,36,66,0.08), 0 0 12px rgba(255,36,66,0.22); } 50% { box-shadow: 0 0 0 7px rgba(255,36,66,0.12), 0 0 22px rgba(255,36,66,0.42); } }
+        @keyframes timelineEnter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .spin { animation: spin 1s linear infinite; }
+      `}</style>
 
       {/* ── Desktop sidebar ── */}
       {!isMobile && (
         <div style={{
-          width: 230, background: "#0e0e0e", borderRight: "1px solid #1a1a1a",
+          width: 230,
+          background: designTokens.color.sidebarBackground,
+          borderRight: "1px solid rgba(255,36,66,0.08)",
           display: "flex", flexDirection: "column", padding: "22px 0",
           flexShrink: 0, position: "sticky", top: 0, height: "100vh",
         }}>
           {/* Logo */}
-          <div style={{ padding: "0 18px 22px", borderBottom: "1px solid #1a1a1a" }}>
+          <div style={{ padding: "0 18px 22px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 30, height: 30, background: "#FF2442", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>红</div>
+              <div style={{ width: 30, height: 30, background: designTokens.color.brandGradient, boxShadow: designTokens.color.brandGlow, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>红</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>XHS 管理台</div>
-                <div style={{ fontSize: 10, color: "#444", marginTop: 1 }}>团队内部使用</div>
+                <div style={{ fontSize: 10, color: designTokens.color.textFaint, marginTop: 1 }}>团队内部使用</div>
               </div>
             </div>
           </div>
 
           {/* Nav */}
-          <div style={{ padding: "14px 10px", borderBottom: "1px solid #1a1a1a" }}>
-            {navItems.map(item => (
-              <button key={item.key} onClick={() => setView(item.key)} style={{
+          <div style={{ padding: "14px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            {navItems.map(item => {
+              const active = view === item.key;
+              const hovering = hoveredNav === item.key;
+              return (
+              <button key={item.key} onClick={() => setView(item.key)}
+                onMouseEnter={() => setHoveredNav(item.key)}
+                onMouseLeave={() => setHoveredNav(null)}
+                style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 9,
-                padding: "9px 12px", borderRadius: 7, border: "none", cursor: "pointer",
-                background: view === item.key ? "rgba(255,36,66,0.1)" : "transparent",
-                color: view === item.key ? "#FF2442" : "#666",
-                fontSize: 13, fontWeight: view === item.key ? 600 : 400,
-                marginBottom: 3, transition: "all 0.1s", textAlign: "left",
+                padding: "9px 12px", borderRadius: 8,
+                border: active ? "1px solid rgba(255,36,66,0.25)" : "1px solid transparent",
+                cursor: "pointer",
+                background: active ? "rgba(255,36,66,0.1)" : hovering ? "rgba(255,255,255,0.03)" : "transparent",
+                color: active ? "#FF2442" : hovering ? "rgba(255,255,255,0.6)" : designTokens.color.textMuted,
+                boxShadow: active ? "0 0 16px rgba(255,36,66,0.12) inset" : "none",
+                fontSize: 13, fontWeight: active ? 600 : 400,
+                marginBottom: 3, transition: "all 200ms ease", textAlign: "left",
               }}>
-                {item.icon} {item.label}
+                <span style={{
+                  display: "flex",
+                  color: active ? "#FF2442" : "inherit",
+                  filter: active ? "drop-shadow(0 0 6px rgba(255,36,66,0.6))" : "none",
+                }}>
+                  {item.icon}
+                </span>
+                {item.label}
               </button>
-            ))}
+            );})}
           </div>
 
           {/* Account list */}
           <div style={{ padding: "14px 10px", flex: 1, overflow: "auto" }}>
             <div style={{ fontSize: 10, color: "#333", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10, paddingLeft: 4 }}>账号</div>
             {accounts.map(acc => (
-              <div key={acc.id} onClick={() => setView("accounts")} style={{
+              <div key={acc.id} onClick={() => setView("accounts")}
+                onMouseEnter={() => setHoveredAccountId(acc.id)}
+                onMouseLeave={() => setHoveredAccountId(null)}
+                style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "7px 8px", borderRadius: 6, cursor: "pointer", marginBottom: 2,
+                background: hoveredAccountId === acc.id ? "rgba(255,255,255,0.03)" : "transparent",
+                transition: "background 200ms ease",
               }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: acc.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: acc.color, boxShadow: `${acc.color || "#FF2442"}55 0 0 8px`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
                   {acc.avatar?.startsWith("http") ? (acc.name?.[0] || "?") : (acc.avatar || acc.name?.[0] || "?")}
                 </div>
-                <span style={{ fontSize: 12, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acc.name}</span>
+                <span style={{ fontSize: 12, color: hoveredAccountId === acc.id ? designTokens.color.textSecondary : designTokens.color.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{acc.name}</span>
               </div>
             ))}
           </div>
@@ -230,7 +267,7 @@ export default function App() {
             <button onClick={() => setShowJoin(true)} style={{
               width: "100%", display: "flex", alignItems: "center", gap: 8,
               padding: "8px 12px", borderRadius: 7, border: "1px dashed #222",
-              cursor: "pointer", background: "transparent", color: "#444", fontSize: 12, marginTop: 6,
+              cursor: "pointer", background: "rgba(255,255,255,0.02)", color: "#555", fontSize: 12, marginTop: 6,
             }}>
               <Plus size={13} /> 加入团队
             </button>
@@ -241,13 +278,13 @@ export default function App() {
       {/* ── Mobile top bar ── */}
       {isMobile && (
         <div style={{
-          background: "#0e0e0e", borderBottom: "1px solid #1a1a1a",
+          background: designTokens.color.sidebarBackground, borderBottom: "1px solid rgba(255,36,66,0.08)",
           padding: "12px 16px",
           display: "flex", alignItems: "center", justifyContent: "space-between",
           position: "sticky", top: 0, zIndex: 50,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 26, height: 26, background: "#FF2442", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>红</div>
+            <div style={{ width: 26, height: 26, background: designTokens.color.brandGradient, boxShadow: designTokens.color.brandGlow, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>红</div>
             <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>XHS 管理台</span>
           </div>
           <button onClick={() => setShowJoin(true)} style={{
@@ -265,6 +302,7 @@ export default function App() {
       <div style={{
         flex: 1, overflow: "auto",
         paddingBottom: isMobile ? "calc(60px + env(safe-area-inset-bottom))" : 0,
+        animation: "fadeIn 150ms ease",
       }}>
         <Suspense fallback={<PageFallback isMobile={isMobile} />}>
           {view === "content"   && <ContentManager accounts={accounts} members={members} />}
@@ -278,8 +316,7 @@ export default function App() {
                   display: "inline-flex",
                   gap: 8,
                   padding: 4,
-                  background: "#0e0e0e",
-                  border: "1px solid #1e1e1e",
+                  ...createGlassCardStyle({ padding: 4, radius: 12 }),
                   borderRadius: 12,
                 }}>
                   {[
@@ -319,9 +356,10 @@ export default function App() {
       {isMobile && (
         <div style={{
           position: "fixed", bottom: 0, left: 0, right: 0,
-          background: "#0e0e0e", borderTop: "1px solid #1a1a1a",
+          background: "rgba(12,12,18,0.96)", borderTop: "1px solid rgba(255,36,66,0.08)",
           display: "flex", zIndex: 100,
           paddingBottom: "env(safe-area-inset-bottom)",
+          backdropFilter: "blur(18px)",
         }}>
           {navItems.map(item => (
             <button key={item.key} onClick={() => setView(item.key)} style={{
@@ -331,6 +369,9 @@ export default function App() {
               color: view === item.key ? "#FF2442" : "#555",
             }}>
               {item.icon}
+              {view === item.key && (
+                <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#FF2442", boxShadow: designTokens.color.brandGlow }} />
+              )}
               <span style={{ fontSize: 10, fontWeight: view === item.key ? 600 : 400 }}>{item.label}</span>
             </button>
           ))}
@@ -340,6 +381,7 @@ export default function App() {
       {showJoin && (
         <JoinTeamModal onClose={() => setShowJoin(false)} onJoin={m => setMembers(prev => [...prev, m])} />
       )}
+      <ToastViewport />
     </div>
   );
 }

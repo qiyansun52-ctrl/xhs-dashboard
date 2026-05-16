@@ -89,6 +89,28 @@ class AgentApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 404)
 
+    async def test_agent_review_action_endpoints_create_list_and_review(self):
+        created = await ai_api.create_agent_run(ai_api.CreateAgentRunReq(message="帮我写一组英国春天标题"))
+        run_id = created["run"]["id"]
+
+        action_resp = await ai_api.create_agent_review_action(ai_api.CreateAgentReviewActionReq(
+            run_id=run_id,
+            action_type="save_draft",
+            payload={"title": "英国春天标题包", "preview": "5 个标题草稿"},
+            rationale="Agent 生成草稿后需要人工确认再落库。",
+            evidence_score=0.76,
+        ))
+        list_resp = await ai_api.list_agent_review_actions(status="pending")
+        reviewed_resp = await ai_api.reject_agent_review_action(
+            action_resp["action"]["id"],
+            ai_api.ReviewAgentActionReq(reason="不适合团队调性"),
+        )
+
+        self.assertTrue(action_resp["ok"])
+        self.assertEqual(list_resp["actions"][0]["id"], action_resp["action"]["id"])
+        self.assertEqual(reviewed_resp["action"]["status"], "rejected")
+        self.assertEqual(reviewed_resp["action"]["review_reason"], "不适合团队调性")
+
 
 if __name__ == "__main__":
     unittest.main()

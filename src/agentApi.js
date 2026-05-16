@@ -82,6 +82,35 @@ export async function getAgentRun(runId) {
   return resp.json();
 }
 
+export async function listAgentReviewActions({ status, runId } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (runId) params.set("run_id", runId);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return requestJson(`/agent/review-actions${suffix}`, { method: "GET" });
+}
+
+export async function createAgentReviewAction(payload) {
+  return requestJson("/agent/review-actions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function approveAgentReviewAction(actionId, payload = {}) {
+  return requestJson(`/agent/review-actions/${actionId}/approve`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function rejectAgentReviewAction(actionId, payload = {}) {
+  return requestJson(`/agent/review-actions/${actionId}/reject`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function subscribeAgentRunEvents(runId, { onEvent, onError, onDone } = {}) {
   const { baseUrl, apiKey } = getApiConfig();
   const controller = new AbortController();

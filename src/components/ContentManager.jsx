@@ -1,7 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Plus, X, Clock, Image as ImgIcon } from "lucide-react";
 import { supabase } from "../supabase.js";
-import { Avatar, Badge, STATUS, inputStyle, useIsMobile } from "./shared.jsx";
+import {
+  Avatar, Badge, STATUS, inputStyle, useIsMobile,
+  Card, CountUpNumber, EmptyState, Skeleton,
+  createGlassCardStyle, createPrimaryButtonStyle, designTokens,
+} from "./shared.jsx";
 import PostDetailDrawer from "./PostDetailDrawer.jsx";
 
 /* ── Image upload zone ── */
@@ -182,30 +186,41 @@ export default function ContentManager({ accounts, members }) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: "#fff", margin: 0 }}>内容管理</h1>
+          <h1 style={{ ...designTokens.type.pageTitle, margin: 0 }}>内容管理</h1>
           <p style={{ color: "#555", margin: "5px 0 0", fontSize: 13 }}>团队实时协作 · 所有人的操作立即同步</p>
         </div>
         <button onClick={() => setShowModal(true)} style={{
+          ...createPrimaryButtonStyle(),
           display: "flex", alignItems: "center", gap: 7,
-          padding: "9px 18px", background: "#FF2442", color: "#fff",
-          border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+          padding: "9px 18px", fontSize: 13, fontWeight: 600,
         }}>
           <Plus size={15} /> 新建帖子
         </button>
       </div>
 
       {/* Status tabs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 22 }}>
-        {Object.entries(counts).map(([k, v]) => (
-          <div key={k} onClick={() => setFS(filterStatus === k ? "all" : k)} style={{
-            background: "#111", borderRadius: 10, padding: "14px 18px",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
+      <div style={{ display: "flex", gap: 8, marginBottom: 22, overflowX: "auto", paddingBottom: 2 }}>
+        {[
+          ["all", { label: "全部", color: "#fff" }, posts.length],
+          ...Object.entries(counts).map(([k, v]) => [k, STATUS[k], v]),
+        ].map(([k, meta, v]) => (
+          <button key={k} onClick={() => setFS(k)} style={{
+            flex: "0 0 auto",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "9px 14px",
+            borderRadius: 999,
+            border: `1px solid ${filterStatus === k ? `${meta.color}66` : designTokens.color.cardBorder}`,
+            background: filterStatus === k ? `${meta.color}18` : "rgba(255,255,255,0.025)",
+            color: filterStatus === k ? meta.color : designTokens.color.textMuted,
             cursor: "pointer",
-            border: filterStatus === k ? `1px solid ${STATUS[k].color}55` : "1px solid #1e1e1e",
+            fontSize: 12,
+            fontWeight: filterStatus === k ? 700 : 500,
           }}>
-            <div style={{ fontSize: 13, color: "#666" }}>{STATUS[k].label}</div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: STATUS[k].color, fontVariantNumeric: "tabular-nums" }}>{v}</div>
-          </div>
+            <span>{meta.label}</span>
+            <CountUpNumber value={v} formatter={n => String(n)} style={{ color: filterStatus === k ? meta.color : designTokens.color.textSecondary, fontWeight: 700 }} />
+          </button>
         ))}
       </div>
 
@@ -225,11 +240,21 @@ export default function ContentManager({ accounts, members }) {
 
       {/* Grid */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#444", fontSize: 14 }}>加载中…</div>
-      ) : visible.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#333", fontSize: 14 }}>
-          {posts.length === 0 ? "还没有帖子，点击「新建帖子」开始" : "没有符合条件的帖子"}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: isMobile ? 10 : 14 }}>
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} height="auto" radius={12} style={{ aspectRatio: "3/4" }} />
+          ))}
         </div>
+      ) : visible.length === 0 ? (
+        <EmptyState
+          title={posts.length === 0 ? "还没有帖子" : "没有符合条件的帖子"}
+          description={posts.length === 0 ? "新建帖子后，封面、状态和排期会在这里统一管理。" : "调整状态或账号筛选，查看其他内容。"}
+          action={posts.length === 0 ? (
+            <button onClick={() => setShowModal(true)} style={{ ...createPrimaryButtonStyle(), padding: "9px 14px", fontSize: 13, fontWeight: 600 }}>
+              <Plus size={14} /> 新建帖子
+            </button>
+          ) : null}
+        />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: isMobile ? 10 : 14 }}>
           {visible.map(post => {
@@ -239,13 +264,12 @@ export default function ContentManager({ accounts, members }) {
               <div
                 key={post.id}
                 onClick={() => setSelected(post)}
-                onMouseEnter={e => e.currentTarget.style.borderColor = acc?.color || "#444"}
-                onMouseLeave={e => e.currentTarget.style.borderColor = "#1e1e1e"}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = acc?.color || designTokens.color.cardBorderHover; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = designTokens.color.cardBorder; e.currentTarget.style.transform = "translateY(0)"; }}
                 style={{
+                  ...createGlassCardStyle({ interactive: true, padding: 0 }),
                   position: "relative", aspectRatio: "3/4", borderRadius: 12,
                   overflow: "hidden", cursor: "pointer",
-                  border: "1px solid #1e1e1e", background: "#111",
-                  transition: "border-color 0.15s",
                 }}
               >
                 {/* Cover image */}
@@ -257,10 +281,14 @@ export default function ContentManager({ accounts, members }) {
                 ) : (
                   <div style={{
                     position: "absolute", inset: 0,
-                    background: acc ? `${acc.color}18` : "#1a1a1a",
+                    background: acc ? `linear-gradient(135deg, ${acc.color}22, rgba(255,255,255,0.035))` : "rgba(255,255,255,0.035)",
                     display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: 18,
                   }}>
-                    <ImgIcon size={28} color="#2a2a2a" />
+                    <div style={{ textAlign: "center" }}>
+                      <ImgIcon size={24} color="rgba(255,255,255,0.25)" style={{ marginBottom: 10 }} />
+                      <div style={{ fontSize: 14, color: "rgba(255,255,255,0.82)", fontWeight: 700, lineHeight: 1.55 }}>{post.title}</div>
+                    </div>
                   </div>
                 )}
 

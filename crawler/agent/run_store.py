@@ -30,6 +30,7 @@ class AgentRunStore:
         self._steps: Dict[str, List[Dict[str, Any]]] = {}
         self._tool_invocations: Dict[str, Dict[str, Any]] = {}
         self._question_cache: Dict[tuple, Dict[str, Any]] = {}
+        self._review_actions: Dict[str, Dict[str, Any]] = {}
         self._db_persistence_disabled = False
 
     async def create_run(self, user_message: str, user_image_url: Optional[str] = None, member_id: Optional[str] = None) -> Dict[str, Any]:
@@ -137,6 +138,102 @@ class AgentRunStore:
             "run": copy.deepcopy(run),
             "steps": copy.deepcopy(steps or []),
         }
+
+    async def create_review_action(
+        self,
+        run_id: str,
+        action_type: str,
+        payload: Dict[str, Any],
+        rationale: Optional[str] = None,
+        evidence_score: Optional[float] = None,
+        duplicate_warning: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        run = self._runs.get(run_id)
+        if not run and self._can_persist():
+            run = await self._load_run_from_db(run_id)
+        if not run:
+            raise KeyError(f"run not found: {run_id}")
+
+        action_id = str(uuid.uuid4())
+        row = {
+            "id": action_id,
+            "run_id": run_id,
+            "action_type": action_type,
+            "status": "pending",
+            "payload": json_safe(payload or {}),
+            "rationale": rationale,
+            "evidence_score": evidence_score,
+            "duplicate_warning": duplicate_warning,
+            "review_reason": None,
+            "reviewed_by_member_id": None,
+            "created_at": now_iso(),
+            "reviewed_at": None,
+        }
+        self._review_actions[action_id] = row
+        if self._can_persist():
+            self._execute_persist(self.sb.table("agent_review_actions").insert([json_safe(row)]))
+        return copy.deepcopy(row)
+
+    async def list_review_actions(
+        self,
+        status: Optional[str] = None,
+        run_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        if self._can_persist():
+            try:
+                query = self.sb.table("agent_review_actions").select("*")
+                if status:
+                    query = query.eq("status", status)
+                if run_id:
+                    query = query.eq("run_id", run_id)
+                res = query.order("created_at", desc=True).limit(limit).execute()
+                for row in res.data or []:
+                    self._review_actions[row["id"]] = dict(row)
+                return copy.deepcopy(list(res.data or []))
+            except Exception as exc:
+                if self._is_missing_agent_schema_error(exc):
+                    self._db_persistence_disabled = True
+                    log.warning("Agent 持久化表未迁移，当前进程降级为内存态运行: %s", exc)
+                else:
+                    raise
+
+        rows = list(self._review_actions.values())
+        if status:
+            rows = [row for row in rows if row.get("status") == status]
+        if run_id:
+            rows = [row for row in rows if row.get("run_id") == run_id]
+        rows.sort(key=lambda row: row.get("created_at") or "", reverse=True)
+        return copy.deepcopy(rows[:limit])
+
+    async def review_action(
+        self,
+        action_id: str,
+        status: str,
+        review_reason: Optional[str] = None,
+        reviewed_by_member_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if status not in {"approved", "rejected", "cancelled"}:
+            raise ValueError("review action status must be approved, rejected, or cancelled")
+
+        action = self._review_actions.get(action_id)
+        if not action and self._can_persist():
+            action = await self._load_review_action_from_db(action_id)
+        if not action:
+            raise KeyError(f"review action not found: {action_id}")
+        if action.get("status") != "pending":
+            raise ValueError("review action is not pending")
+
+        payload = {
+            "status": status,
+            "review_reason": review_reason,
+            "reviewed_by_member_id": reviewed_by_member_id,
+            "reviewed_at": now_iso(),
+        }
+        action.update(json_safe(payload))
+        if self._can_persist():
+            self._execute_persist(self.sb.table("agent_review_actions").update(json_safe(payload)).eq("id", action_id))
+        return copy.deepcopy(action)
 
     async def get_tool_invocation(self, idempotency_key: str) -> Optional[Dict[str, Any]]:
         record = self._tool_invocations.get(idempotency_key)
@@ -314,3 +411,17 @@ class AgentRunStore:
             raise
         self._steps[run_id] = list(res.data or [])
         return self._steps[run_id]
+
+    async def _load_review_action_from_db(self, action_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            res = self.sb.table("agent_review_actions").select("*").eq("id", action_id).maybe_single().execute()
+        except Exception as exc:
+            if self._is_missing_agent_schema_error(exc):
+                self._db_persistence_disabled = True
+                log.warning("Agent 持久化表未迁移，当前进程降级为内存态运行: %s", exc)
+                return None
+            raise
+        if not res.data:
+            return None
+        self._review_actions[action_id] = dict(res.data)
+        return self._review_actions[action_id]

@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, Trash2, ExternalLink, RefreshCw, Heart, Bookmark, MessageCircle, Eye } from "lucide-react";
+import { Plus, X, Trash2, ExternalLink, RefreshCw, Heart, Bookmark, MessageCircle, Eye, Search, Copy, Check } from "lucide-react";
 import { supabase } from "../supabase.js";
-import { inputStyle, useIsMobile } from "./shared.jsx";
+import {
+  inputStyle, useIsMobile, Card, EmptyState, Skeleton, useToast,
+  createGlassCardStyle, createPrimaryButtonStyle, designTokens,
+} from "./shared.jsx";
 import ViralPostDrawer from "./ViralPostDrawer.jsx";
 
 const VIRAL_POST_COLUMNS = [
@@ -44,7 +47,21 @@ function fmt(n) {
 }
 
 function Empty({ text }) {
-  return <div style={{ textAlign: "center", padding: "40px 0", color: "#333", fontSize: 13 }}>{text}</div>;
+  return <EmptyState title={text} description="添加内容后，这里会自动更新为团队可复用素材。" />;
+}
+
+function LibrarySearch({ value, onChange, placeholder = "搜索素材…" }) {
+  return (
+    <div style={{ position: "relative", marginBottom: 14 }}>
+      <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: designTokens.color.textFaint }} />
+      <input
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle, paddingLeft: 34 }}
+      />
+    </div>
+  );
 }
 
 /* ── 状态标签 ── */
@@ -91,6 +108,7 @@ function BenchmarkTab() {
   const [saving, setSaving]     = useState(false);
   const [expandedAll, setExpandedAll] = useState({}); // accountId → bool (show all 10 posts)
   const [selectedPost, setSelectedPost] = useState(null); // benchmark post for drawer
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     load();
@@ -146,6 +164,13 @@ function BenchmarkTab() {
   };
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
+  const filteredRows = rows.filter(row => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [row.name, row.destination, row.content_type, row.note_direction, row.consumer_words]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(q));
+  });
 
   return (
     <div>
@@ -164,6 +189,7 @@ function BenchmarkTab() {
           <Plus size={14} /> 添加账号
         </button>
       </div>
+      <LibrarySearch value={search} onChange={setSearch} placeholder="搜索账号、目的地、内容类型…" />
 
       {/* 添加表单 */}
       {showForm && (
@@ -212,15 +238,15 @@ function BenchmarkTab() {
       {selectedPost && <ViralPostDrawer post={selectedPost} onClose={() => setSelectedPost(null)} />}
 
       {/* 账号卡片列表 */}
-      {rows.length === 0 ? <Empty text="暂无对标账号，点击「添加账号」并粘贴小红书链接" /> : (
+      {filteredRows.length === 0 ? <Empty text={rows.length === 0 ? "暂无对标账号，点击「添加账号」并粘贴小红书链接" : "没有符合条件的对标账号"} /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {rows.map(row => {
+          {filteredRows.map(row => {
             const isExpandedAll = !!expandedAll[row.id];
             const recentPosts = Array.isArray(row.recent_posts) ? row.recent_posts : [];
             const visiblePosts = isExpandedAll ? recentPosts : recentPosts.slice(0, 5);
 
             return (
-              <div key={row.id} style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, overflow: "hidden" }}>
+              <div key={row.id} style={{ ...createGlassCardStyle({ padding: 0 }), overflow: "hidden" }}>
                 {/* 账号头部 */}
                 <div style={{ padding: "16px 18px", display: "flex", alignItems: "flex-start", gap: 14 }}>
                   {/* 头像 */}
@@ -385,6 +411,7 @@ function TopicsTab() {
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState("全部");
+  const [search, setSearch]     = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState({ description: "", tag: TOPIC_TAGS[0], reference_url: "" });
   const [saving, setSaving]     = useState(false);
@@ -430,7 +457,8 @@ function TopicsTab() {
     setItems(p => p.filter(i => i.id !== id));
   };
 
-  const filtered = filter === "全部" ? items : items.filter(i => i.tag === filter);
+  const filtered = (filter === "全部" ? items : items.filter(i => i.tag === filter))
+    .filter(item => !search.trim() || [item.description, item.tag].filter(Boolean).some(value => String(value).toLowerCase().includes(search.trim().toLowerCase())));
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
 
@@ -460,6 +488,7 @@ function TopicsTab() {
           <Plus size={14} /> 新增选题
         </button>
       </div>
+      <LibrarySearch value={search} onChange={setSearch} placeholder="搜索选题描述或标签…" />
 
       {showForm && (
         <div style={{ background: "#0d0d0d", border: "1px solid #2a2a2a", borderRadius: 10, padding: 16, marginBottom: 16 }}>
@@ -512,8 +541,8 @@ function TopicsTab() {
             const hasStats = item.ref_likes > 0 || item.ref_saves > 0 || item.ref_views > 0;
             return (
               <div key={item.id} style={{
-                background: "#111", border: "1px solid #1e1e1e", borderRadius: 10,
-                padding: "14px 16px", borderLeft: `3px solid ${color}`,
+                ...createGlassCardStyle({ padding: "14px 16px", radius: 10 }),
+                borderLeft: `3px solid ${color}`,
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                   <p style={{ fontSize: 13, color: "#ddd", lineHeight: 1.65, margin: 0, flex: 1 }}>{item.description}</p>
@@ -576,6 +605,9 @@ function TitlesTab() {
   const [loading, setLoading] = useState(true);
   const [input, setInput]     = useState("");
   const [saving, setSaving]   = useState(false);
+  const [search, setSearch]   = useState("");
+  const [copiedId, setCopiedId] = useState(null);
+  const toast = useToast();
 
   useEffect(() => { load(); }, []);
 
@@ -601,11 +633,23 @@ function TitlesTab() {
     if (error) { alert("删除失败：" + error.message); return; }
     setItems(p => p.filter(i => i.id !== id));
   };
+  const handleCopy = async item => {
+    try {
+      await navigator.clipboard.writeText(item.title);
+      setCopiedId(item.id);
+      toast("标题已复制");
+      window.setTimeout(() => setCopiedId(null), 1200);
+    } catch {
+      alert("复制失败，请手动选择标题后复制。");
+    }
+  };
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
+  const filteredItems = items.filter(item => !search.trim() || item.title.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div>
+      <LibrarySearch value={search} onChange={setSearch} placeholder="搜索标题关键词…" />
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <input
           value={input}
@@ -622,20 +666,28 @@ function TitlesTab() {
         }}>添加</button>
       </div>
 
-      {items.length === 0 ? <Empty text="暂无标题记录" /> : (
-        <div style={{ border: "1px solid #1e1e1e", borderRadius: 10, overflow: "hidden" }}>
-          {items.map((item, i) => (
+      {filteredItems.length === 0 ? <Empty text={items.length === 0 ? "暂无标题记录" : "没有符合条件的标题"} /> : (
+        <div style={{ ...createGlassCardStyle({ padding: 0, radius: 10 }), overflow: "hidden" }}>
+          {filteredItems.map((item, i) => (
             <div key={item.id} style={{
               display: "flex", alignItems: "center", gap: 12,
               padding: "13px 16px",
-              background: i % 2 === 0 ? "#111" : "#0e0e0e",
-              borderBottom: i < items.length - 1 ? "1px solid #1a1a1a" : "none",
+              background: i % 2 === 0 ? "rgba(255,255,255,0.018)" : "rgba(255,255,255,0.032)",
+              borderBottom: i < filteredItems.length - 1 ? "1px solid rgba(255,255,255,0.045)" : "none",
             }}
-              onMouseEnter={e => e.currentTarget.style.background = "#161616"}
-              onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "#111" : "#0e0e0e"}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.055)"}
+              onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "rgba(255,255,255,0.018)" : "rgba(255,255,255,0.032)"}
             >
               <span style={{ flex: 1, fontSize: 13, color: "#ddd", lineHeight: 1.5 }}>{item.title}</span>
               <span style={{ fontSize: 11, color: "#333", flexShrink: 0 }}>{new Date(item.created_at).toLocaleDateString("zh-CN")}</span>
+              <button
+                onClick={() => handleCopy(item)}
+                aria-label="复制标题"
+                title="复制标题"
+                style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${designTokens.color.cardBorder}`, borderRadius: 8, color: copiedId === item.id ? "#26DE81" : "#888", cursor: "pointer", padding: 6, flexShrink: 0, display: "flex" }}
+              >
+                {copiedId === item.id ? <Check size={13} /> : <Copy size={13} />}
+              </button>
               <button
                 onClick={() => handleDelete(item.id)}
                 aria-label="删除标题"
@@ -649,7 +701,7 @@ function TitlesTab() {
           ))}
         </div>
       )}
-      <div style={{ marginTop: 10, fontSize: 11, color: "#333", textAlign: "right" }}>{items.length} 条标题</div>
+      <div style={{ marginTop: 10, fontSize: 11, color: "#333", textAlign: "right" }}>{filteredItems.length} / {items.length} 条标题</div>
     </div>
   );
 }
@@ -662,6 +714,7 @@ function BannedWordsTab() {
   const [loading, setLoading] = useState(true);
   const [input, setInput]     = useState("");
   const [saving, setSaving]   = useState(false);
+  const [search, setSearch]   = useState("");
 
   useEffect(() => { load(); }, []);
 
@@ -691,9 +744,11 @@ function BannedWordsTab() {
   };
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
+  const filteredItems = items.filter(item => !search.trim() || item.word.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div>
+      <LibrarySearch value={search} onChange={setSearch} placeholder="搜索违禁词…" />
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         <input
           value={input}
@@ -710,10 +765,10 @@ function BannedWordsTab() {
         }}>添加</button>
       </div>
 
-      {items.length === 0 ? <Empty text="暂无违禁词记录" /> : (
+      {filteredItems.length === 0 ? <Empty text={items.length === 0 ? "暂无违禁词记录" : "没有符合条件的违禁词"} /> : (
         <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {items.map(item => (
+            {filteredItems.map(item => (
               <div key={item.id} style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "6px 12px", borderRadius: 20,
@@ -736,7 +791,7 @@ function BannedWordsTab() {
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 14, fontSize: 11, color: "#333" }}>{items.length} 个违禁词</div>
+          <div style={{ marginTop: 14, fontSize: 11, color: "#333" }}>{filteredItems.length} / {items.length} 个违禁词</div>
         </>
       )}
     </div>
@@ -751,6 +806,7 @@ function ViralPostsTab() {
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState("全部");
+  const [search, setSearch]     = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState({ url: "", note: "", country: COUNTRIES[0] });
   const [saving, setSaving]     = useState(false);
@@ -804,7 +860,14 @@ function ViralPostsTab() {
     setItems(p => p.map(i => i.id === id ? { ...i, fetch_status: "pending" } : i));
   };
 
-  const filtered = filter === "全部" ? items : items.filter(i => i.country === filter);
+  const filtered = (filter === "全部" ? items : items.filter(i => i.country === filter))
+    .filter(item => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return [item.title, item.caption, item.note, item.author_name, item.country]
+        .filter(Boolean)
+        .some(value => String(value).toLowerCase().includes(q));
+    });
 
   if (loading) return <div style={{ color: "#444", padding: 24 }}>加载中…</div>;
 
@@ -834,6 +897,7 @@ function ViralPostsTab() {
           <Plus size={14} /> 添加收藏
         </button>
       </div>
+      <LibrarySearch value={search} onChange={setSearch} placeholder="搜索标题、作者、备注…" />
 
       {/* 添加表单 */}
       {showForm && (
@@ -892,7 +956,7 @@ function ViralPostsTab() {
             const isError = item.fetch_status === "error";
 
             return (
-              <div key={item.id} style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, overflow: "hidden" }}>
+              <div key={item.id} style={{ ...createGlassCardStyle({ padding: 0 }), overflow: "hidden" }}>
                 {/* 封面图 — 点击打开详情 */}
                 <div onClick={() => item.fetch_status === "done" && setSelected(item)}
                   style={{ aspectRatio: "3/4", position: "relative", background: "#1a1a1a", cursor: item.fetch_status === "done" ? "pointer" : "default" }}>
@@ -1010,27 +1074,41 @@ export default function MaterialPage() {
   return (
     <div style={{ padding: isMobile ? 16 : 32, maxWidth: 1100 }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: "#fff", margin: 0 }}>素材库</h1>
+        <h1 style={{ ...designTokens.type.pageTitle, margin: 0 }}>素材库</h1>
         <p style={{ color: "#555", fontSize: 13, margin: "5px 0 0" }}>
           对标账号、选题方向、标题灵感、违禁词、爆款收藏 · 粘贴小红书链接自动抓取数据
         </p>
       </div>
 
       <div style={{
-        display: "flex", gap: 2, marginBottom: 24,
-        background: "#0d0d0d", border: "1px solid #1e1e1e",
-        borderRadius: 10, padding: 4, overflowX: "auto",
+        display: "flex", gap: 18, marginBottom: 24,
+        borderBottom: `1px solid ${designTokens.color.cardBorder}`,
+        overflowX: "auto",
       }}>
         {TABS.map((t, i) => (
           <button key={t} onClick={() => setTab(i)} style={{
             flex: isMobile ? "0 0 auto" : 1,
-            padding: isMobile ? "8px 14px" : "9px 0",
-            borderRadius: 7, border: "none", cursor: "pointer",
-            background: tab === i ? "#1a1a1a" : "transparent",
-            color: tab === i ? "#e0e0e0" : "#555",
+            position: "relative",
+            padding: isMobile ? "10px 4px 12px" : "10px 0 12px",
+            borderRadius: 0, border: "none", cursor: "pointer",
+            background: "transparent",
+            color: tab === i ? "#fff" : designTokens.color.textMuted,
             fontSize: 13, fontWeight: tab === i ? 600 : 400,
             whiteSpace: "nowrap", transition: "all 0.1s",
-          }}>{t}</button>
+          }}>
+            {t}
+            <span style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: -1,
+              height: 2,
+              borderRadius: 2,
+              background: tab === i ? designTokens.color.brandGradient : "transparent",
+              boxShadow: tab === i ? designTokens.color.brandGlow : "none",
+              transition: "background 200ms ease",
+            }} />
+          </button>
         ))}
       </div>
 

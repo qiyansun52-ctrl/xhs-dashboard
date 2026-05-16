@@ -452,6 +452,20 @@ class CreateAgentRunReq(BaseModel):
     member_id: Optional[str] = None
 
 
+class CreateAgentReviewActionReq(BaseModel):
+    run_id: str = Field(..., min_length=1)
+    action_type: Literal["approve_candidate", "save_note", "add_calendar_item", "save_draft", "mark_template"]
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    rationale: Optional[str] = Field(default=None, max_length=1000)
+    evidence_score: Optional[float] = Field(default=None, ge=0, le=1)
+    duplicate_warning: Optional[str] = Field(default=None, max_length=500)
+
+
+class ReviewAgentActionReq(BaseModel):
+    reason: Optional[Literal["不相关", "低质量", "疑似广告", "重复素材", "不适合团队调性", "数据异常", "已入库"]] = None
+    member_id: Optional[str] = None
+
+
 @app.post("/ai/search-viral", dependencies=[Depends(require_api_key)])
 async def search_viral(req: SearchViralReq):
     """对爆款帖子做语义检索，返回相似度排序后的列表。"""
@@ -530,6 +544,88 @@ async def stream_agent_run_events(run_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/agent/review-actions", dependencies=[Depends(require_api_key)])
+async def create_agent_review_action(req: CreateAgentReviewActionReq):
+    if not AGENT_RUNTIME_ENABLED:
+        raise HTTPException(404, "运营助手暂未开启")
+
+    try:
+        action = await agent_run_store.create_review_action(
+            run_id=req.run_id,
+            action_type=req.action_type,
+            payload=req.payload,
+            rationale=req.rationale,
+            evidence_score=req.evidence_score,
+            duplicate_warning=req.duplicate_warning,
+        )
+    except KeyError:
+        raise HTTPException(404, "运营助手任务不存在")
+    except Exception as e:
+        log.error(f"创建 Agent 待确认动作失败: {e}")
+        raise HTTPException(500, "创建待确认动作失败，请稍后重试。")
+    return {"ok": True, "action": action}
+
+
+@app.get("/agent/review-actions", dependencies=[Depends(require_api_key)])
+async def list_agent_review_actions(
+    status: Optional[Literal["pending", "approved", "rejected", "cancelled"]] = None,
+    run_id: Optional[str] = None,
+):
+    if not AGENT_RUNTIME_ENABLED:
+        raise HTTPException(404, "运营助手暂未开启")
+
+    try:
+        actions = await agent_run_store.list_review_actions(status=status, run_id=run_id)
+    except Exception as e:
+        log.error(f"读取 Agent 待确认动作失败: {e}")
+        raise HTTPException(500, "读取待确认队列失败，请稍后重试。")
+    return {"ok": True, "actions": actions}
+
+
+@app.post("/agent/review-actions/{action_id}/approve", dependencies=[Depends(require_api_key)])
+async def approve_agent_review_action(action_id: str, req: ReviewAgentActionReq):
+    if not AGENT_RUNTIME_ENABLED:
+        raise HTTPException(404, "运营助手暂未开启")
+
+    try:
+        action = await agent_run_store.review_action(
+            action_id,
+            status="approved",
+            review_reason=req.reason,
+            reviewed_by_member_id=req.member_id,
+        )
+    except KeyError:
+        raise HTTPException(404, "待确认动作不存在")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.error(f"通过 Agent 待确认动作失败: {e}")
+        raise HTTPException(500, "操作失败，请稍后重试。")
+    return {"ok": True, "action": action}
+
+
+@app.post("/agent/review-actions/{action_id}/reject", dependencies=[Depends(require_api_key)])
+async def reject_agent_review_action(action_id: str, req: ReviewAgentActionReq):
+    if not AGENT_RUNTIME_ENABLED:
+        raise HTTPException(404, "运营助手暂未开启")
+
+    try:
+        action = await agent_run_store.review_action(
+            action_id,
+            status="rejected",
+            review_reason=req.reason or "不相关",
+            reviewed_by_member_id=req.member_id,
+        )
+    except KeyError:
+        raise HTTPException(404, "待确认动作不存在")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.error(f"拒绝 Agent 待确认动作失败: {e}")
+        raise HTTPException(500, "操作失败，请稍后重试。")
+    return {"ok": True, "action": action}
 
 
 @app.post("/ai/research-notes", dependencies=[Depends(require_api_key)])

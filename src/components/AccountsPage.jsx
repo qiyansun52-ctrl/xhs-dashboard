@@ -4,13 +4,14 @@ import {
   Eye, Heart, Bookmark, Users, Image as ImgIcon, Clock,
 } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from "recharts";
 import { supabase } from "../supabase.js";
 import {
-  Avatar, StatPill, Badge, ChartTip,
+  Avatar, StatPill, Badge, ChartTip, Card, CountUpNumber, EmptyState,
   fmt, getWeekly, inputStyle, PRESET_COLORS, FLAG_OPTIONS, useIsMobile,
+  createGlassCardStyle, createPrimaryButtonStyle, designTokens,
 } from "./shared.jsx";
 import PostDetailDrawer from "./PostDetailDrawer.jsx";
 
@@ -373,11 +374,10 @@ function AccountDetail({ account, members, assignments, posts, onBack, onAssign,
       </div>
 
       {/* Header card */}
-      <div style={{
+      <Card style={{
         display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: isMobile ? 12 : 18,
         marginBottom: isMobile ? 20 : 28,
-        padding: isMobile ? "16px" : "22px 24px", background: "#111",
-        border: "1px solid #1e1e1e", borderRadius: 16,
+        padding: isMobile ? "16px" : "22px 24px", borderRadius: 16,
       }}>
         <Avatar acc={account} size={64} />
         <div style={{ flex: 1 }}>
@@ -428,7 +428,7 @@ function AccountDetail({ account, members, assignments, posts, onBack, onAssign,
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 10, marginBottom: isMobile ? 20 : 28 }}>
@@ -439,24 +439,34 @@ function AccountDetail({ account, members, assignments, posts, onBack, onAssign,
       </div>
 
       {/* Chart */}
-      <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: "22px 24px", marginBottom: 28 }}>
+      <Card style={{ padding: "22px 24px", marginBottom: 28 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#ddd", marginBottom: 16 }}>近7日趋势</div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={weekly} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#1e1e1e" />
+          <AreaChart data={weekly} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
+            <defs>
+              <linearGradient id={`views-${account.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FF2442" stopOpacity={0.28} />
+                <stop offset="95%" stopColor="#FF2442" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id={`likes-${account.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FF9F43" stopOpacity={0.22} />
+                <stop offset="95%" stopColor="#FF9F43" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.06)" />
             <XAxis dataKey="day" stroke="#333" tick={{ fontSize: 11, fill: "#555" }} />
             <YAxis stroke="#333" tick={{ fontSize: 11, fill: "#555" }} />
             <Tooltip content={<ChartTip />} />
-            <Line type="monotone" dataKey="views" name="浏览" stroke="#FF2442" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="likes" name="点赞" stroke="#FF9F43" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="saves" name="收藏" stroke="#A29BFE" strokeWidth={2} dot={false} />
-          </LineChart>
+            <Area type="monotone" dataKey="views" name="浏览" stroke="#FF2442" strokeWidth={2} fill={`url(#views-${account.id})`} dot={false} />
+            <Area type="monotone" dataKey="likes" name="点赞" stroke="#FF9F43" strokeWidth={2} fill={`url(#likes-${account.id})`} dot={false} />
+            <Area type="monotone" dataKey="saves" name="收藏" stroke="#A29BFE" strokeWidth={2} fill="rgba(162,155,254,0.08)" dot={false} />
+          </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       {/* Posts grid */}
       {accountPosts.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 0", color: "#333", fontSize: 13 }}>该账号暂无帖子</div>
+        <EmptyState title="该账号暂无帖子" description="排期或发布帖子后，这里会自动汇总账号内容。" />
       ) : (
         <div>
           <div style={{ fontSize: 11, color: "#444", fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>
@@ -643,15 +653,15 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: isMobile ? 20 : 28 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: "#fff", margin: 0 }}>账号管理</h1>
+          <h1 style={{ ...designTokens.type.pageTitle, margin: 0 }}>账号管理</h1>
           <p style={{ color: "#555", margin: "5px 0 0", fontSize: 13 }}>
             {accounts.length} 个账号 · 近7日数据（手动更新，接入 Spider_XHS 后自动同步）
           </p>
         </div>
         <button onClick={() => setShowAdd(true)} style={{
+          ...createPrimaryButtonStyle(),
           display: "flex", alignItems: "center", gap: 7,
-          padding: "9px 18px", background: "#FF2442", color: "#fff",
-          border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+          padding: "9px 18px", fontSize: 13, fontWeight: 600,
         }}>
           <Plus size={15} /> 添加账号
         </button>
@@ -660,22 +670,24 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
       {/* Totals */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
         {[
-          { label: "总粉丝", value: fmt(totals.followers), icon: <Users size={14} />,    color: "#FF2442" },
-          { label: "总浏览", value: fmt(totals.views),     icon: <Eye size={14} />,      color: "#FF9F43" },
-          { label: "总点赞", value: fmt(totals.likes),     icon: <Heart size={14} />,    color: "#FF7A7A" },
-          { label: "总收藏", value: fmt(totals.saves),     icon: <Bookmark size={14} />, color: "#A29BFE" },
+          { label: "总粉丝", value: totals.followers, icon: <Users size={14} />,    color: "#FF2442" },
+          { label: "总浏览", value: totals.views,     icon: <Eye size={14} />,      color: "#FF9F43" },
+          { label: "总点赞", value: totals.likes,     icon: <Heart size={14} />,    color: "#FF7A7A" },
+          { label: "总收藏", value: totals.saves,     icon: <Bookmark size={14} />, color: "#A29BFE" },
         ].map(s => (
-          <div key={s.label} style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: "18px 20px" }}>
+          <Card key={s.label} style={{ padding: "18px 20px" }}>
             <div style={{ color: s.color, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-              {s.icon}<span style={{ fontSize: 11, color: "#555" }}>{s.label}</span>
+              {s.icon}<span style={{ fontSize: 11, color: designTokens.color.textMuted }}>{s.label}</span>
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
-          </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: "#fff" }}>
+              <CountUpNumber value={s.value} />
+            </div>
+          </Card>
         ))}
       </div>
 
       {/* Combined trend chart */}
-      <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, padding: "20px 24px", marginBottom: 28 }}>
+      <Card style={{ padding: "20px 24px", marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#ddd" }}>全账号近7日趋势</div>
           <div style={{ display: "flex", gap: 18, fontSize: 12, color: "#555" }}>
@@ -687,20 +699,41 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={combinedWeekly} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#1e1e1e" />
+          <AreaChart data={combinedWeekly} margin={{ top: 0, right: 8, bottom: 0, left: -20 }}>
+            <defs>
+              <linearGradient id="combined-views" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FF2442" stopOpacity={0.28} />
+                <stop offset="95%" stopColor="#FF2442" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="combined-likes" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FF9F43" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#FF9F43" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.06)" />
             <XAxis dataKey="day" stroke="#333" tick={{ fontSize: 11, fill: "#555" }} />
             <YAxis stroke="#333" tick={{ fontSize: 11, fill: "#555" }} />
             <Tooltip content={<ChartTip />} />
-            <Line type="monotone" dataKey="views" name="浏览" stroke="#FF2442" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="likes" name="点赞" stroke="#FF9F43" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="saves" name="收藏" stroke="#A29BFE" strokeWidth={2} dot={false} />
-          </LineChart>
+            <Area type="monotone" dataKey="views" name="浏览" stroke="#FF2442" strokeWidth={2} fill="url(#combined-views)" dot={false} />
+            <Area type="monotone" dataKey="likes" name="点赞" stroke="#FF9F43" strokeWidth={2} fill="url(#combined-likes)" dot={false} />
+            <Area type="monotone" dataKey="saves" name="收藏" stroke="#A29BFE" strokeWidth={2} fill="rgba(162,155,254,0.08)" dot={false} />
+          </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       {/* Account cards */}
       <div style={{ fontSize: 11, color: "#444", fontWeight: 500, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 14 }}>账号列表</div>
+      {accounts.length === 0 ? (
+        <EmptyState
+          title="还没有账号"
+          description="添加第一个小红书账号后，团队数据和内容归属会在这里汇总。"
+          action={(
+            <button onClick={() => setShowAdd(true)} style={{ ...createPrimaryButtonStyle(), padding: "9px 14px", fontSize: 13, fontWeight: 600 }}>
+              <Plus size={14} /> 添加账号
+            </button>
+          )}
+        />
+      ) : (
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: isMobile ? 10 : 14 }}>
         {accounts.map(acc => {
           const assignedMember = members.find(m => m.id === assignments[acc.id]);
@@ -709,11 +742,11 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
             <div
               key={acc.id}
               onClick={() => setDetail(acc)}
-              onMouseEnter={e => e.currentTarget.style.borderColor = acc.color}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "#1e1e1e"}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = acc.color; e.currentTarget.style.transform = "translateY(-1px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = designTokens.color.cardBorder; e.currentTarget.style.transform = "translateY(0)"; }}
               style={{
-                background: "#111", border: "1px solid #1e1e1e", borderRadius: 14,
-                padding: "20px 22px", cursor: "pointer", transition: "border-color 0.15s",
+                ...createGlassCardStyle({ interactive: true, padding: "20px 22px", radius: 14 }),
+                cursor: "pointer",
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
@@ -745,7 +778,7 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
                   { label: "点赞", value: fmt(acc.likes) },
                   { label: "收藏", value: fmt(acc.saves) },
                 ].map(s => (
-                  <div key={s.label} style={{ background: "#161616", borderRadius: 6, padding: "8px 10px", textAlign: "center" }}>
+                  <div key={s.label} style={{ background: "rgba(255,255,255,0.035)", borderRadius: 6, padding: "8px 10px", textAlign: "center" }}>
                     <div style={{ fontSize: 15, fontWeight: 600, color: s.color || "#fff", fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
                     <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>{s.label}</div>
                   </div>
@@ -768,7 +801,7 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
           key="add-account"
           onClick={() => setShowAdd(true)}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "#FF2442"; e.currentTarget.style.color = "#FF2442"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e1e1e"; e.currentTarget.style.color = "#333"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = designTokens.color.cardBorder; e.currentTarget.style.color = "#333"; }}
           style={{
             background: "transparent", border: "2px dashed #1e1e1e", borderRadius: 14,
             padding: "20px 22px", cursor: "pointer",
@@ -780,6 +813,7 @@ export default function AccountsPage({ accounts, members, onAccountsChange }) {
           <span style={{ fontSize: 13, fontWeight: 500 }}>添加新账号</span>
         </div>
       </div>
+      )}
 
       {showAddModal && (
         <AddAccountModal

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { supabase } from "../supabase.js";
-import { Avatar, Badge, useIsMobile } from "./shared.jsx";
+import { Avatar, Badge, Card, EmptyState, Skeleton, designTokens, useIsMobile } from "./shared.jsx";
 import PostDetailDrawer from "./PostDetailDrawer.jsx";
 
 const WEEKDAYS  = ["一", "二", "三", "四", "五", "六", "日"];
@@ -83,10 +83,11 @@ function TodayBanner({ posts, accounts, onSelect }) {
 /* ── 桌面日历格 ── */
 function DesktopCalendar({ days, postsByDate, accounts, onSelect }) {
   const today = todayKey();
+  const [hoveredKey, setHoveredKey] = useState(null);
   return (
-    <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 12, overflow: "hidden" }}>
+    <Card style={{ padding: 0, overflow: "hidden" }}>
       {/* 星期头 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: "#0d0d0d" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: "rgba(255,255,255,0.025)" }}>
         {WEEKDAYS.map(d => (
           <div key={d} style={{ padding: "10px 0", textAlign: "center", fontSize: 11, color: "#444", fontWeight: 600, letterSpacing: "0.05em" }}>
             {d}
@@ -103,18 +104,24 @@ function DesktopCalendar({ days, postsByDate, accounts, onSelect }) {
           const isLast  = idx >= 35;
 
           return (
-            <div key={idx} style={{
+            <div
+              key={idx}
+              onMouseEnter={() => setHoveredKey(key)}
+              onMouseLeave={() => setHoveredKey(null)}
+              style={{
+              position: "relative",
               minHeight: 110, padding: "8px 8px 6px",
-              borderRight: (idx + 1) % 7 === 0 ? "none" : "1px solid #1a1a1a",
-              borderBottom: isLast ? "none" : "1px solid #1a1a1a",
+              borderRight: (idx + 1) % 7 === 0 ? "none" : "1px solid rgba(255,255,255,0.045)",
+              borderBottom: isLast ? "none" : "1px solid rgba(255,255,255,0.045)",
               background: isToday ? "rgba(255,36,66,0.04)" : "transparent",
-              transition: "background 0.1s",
+              transition: "background 200ms ease",
             }}>
               {/* 日期数字 */}
               <div style={{
                 width: 24, height: 24, borderRadius: "50%", marginBottom: 5,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: isToday ? "#FF2442" : "transparent",
+                boxShadow: isToday ? "0 0 0 4px rgba(255,36,66,0.12), 0 0 18px rgba(255,36,66,0.35)" : "none",
                 fontSize: 12, fontWeight: isToday ? 700 : 400,
                 color: isToday ? "#fff" : day.cur ? "#888" : "#2a2a2a",
               }}>
@@ -145,11 +152,45 @@ function DesktopCalendar({ days, postsByDate, accounts, onSelect }) {
               {posts.length > 3 && (
                 <div style={{ fontSize: 10, color: "#444", paddingLeft: 2 }}>+{posts.length - 3} 条</div>
               )}
+              {posts.length > 0 && (
+                <div style={{ position: "absolute", left: 8, right: 8, bottom: 6, display: "flex", gap: 3, overflow: "hidden" }}>
+                  {posts.slice(0, 6).map(p => {
+                    const acc = accounts.find(a => a.id === (p.account_id ?? p.accountId));
+                    return <span key={p.id} style={{ width: 5, height: 5, borderRadius: "50%", background: acc?.color || "#666", flexShrink: 0 }} />;
+                  })}
+                </div>
+              )}
+              {hoveredKey === key && posts.length > 0 && (
+                <div style={{
+                  position: "absolute",
+                  left: 8,
+                  right: 8,
+                  top: 34,
+                  zIndex: 5,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(10,10,16,0.96)",
+                  boxShadow: "0 12px 26px rgba(0,0,0,0.38)",
+                  padding: 10,
+                  pointerEvents: "none",
+                  animation: "fadeIn 150ms ease",
+                }}>
+                  <div style={{ fontSize: 11, color: "#FF2442", fontWeight: 700, marginBottom: 6 }}>{posts.length} 条排期</div>
+                  {posts.slice(0, 4).map(p => {
+                    const acc = accounts.find(a => a.id === (p.account_id ?? p.accountId));
+                    return (
+                      <div key={p.id} style={{ fontSize: 11, color: "#ddd", lineHeight: 1.5, marginBottom: 4 }}>
+                        <span style={{ color: acc?.color || "#888" }}>●</span> {p.title}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -164,9 +205,7 @@ function MobileList({ days, postsByDate, accounts, onSelect }) {
 
   if (!activeDays.length) {
     return (
-      <div style={{ textAlign: "center", padding: "40px 0", color: "#333", fontSize: 13 }}>
-        本月暂无排期帖子
-      </div>
+      <EmptyState title="本月暂无排期帖子" description="创建待发布内容后，日历会按日期自动聚合。" />
     );
   }
 
@@ -198,7 +237,8 @@ function MobileList({ days, postsByDate, accounts, onSelect }) {
               return (
                 <div key={p.id} onClick={() => onSelect(p)} style={{
                   marginLeft: 36, marginBottom: 6, padding: "10px 12px",
-                  background: "#111", border: "1px solid #1e1e1e",
+                  background: "rgba(255,255,255,0.03)", border: `1px solid ${designTokens.color.cardBorder}`,
+                  boxShadow: designTokens.shadow.card,
                   borderLeft: `3px solid ${acc?.color || "#555"}`,
                   borderRadius: "0 8px 8px 0", cursor: "pointer",
                   display: "flex", alignItems: "center", gap: 10,
@@ -281,7 +321,7 @@ export default function CalendarPage({ accounts, members }) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: "#fff", margin: 0 }}>内容日历</h1>
+          <h1 style={{ ...designTokens.type.pageTitle, margin: 0 }}>内容日历</h1>
           <p style={{ color: "#555", fontSize: 13, margin: "5px 0 0" }}>
             本月 {monthPosts.length} 条排期
             {scheduledCnt > 0 && <span style={{ color: "#FF9F43", marginLeft: 10 }}>·  待发布 {scheduledCnt}</span>}
@@ -335,7 +375,7 @@ export default function CalendarPage({ accounts, members }) {
 
       {/* Calendar / List */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#444" }}>加载中…</div>
+        <Skeleton height={isMobile ? 220 : 520} radius={12} />
       ) : isMobile ? (
         <MobileList days={days} postsByDate={postsByDate} accounts={accounts} onSelect={setSelected} />
       ) : (

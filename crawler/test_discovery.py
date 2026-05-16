@@ -1,4 +1,5 @@
 import asyncio
+import json
 import math
 import unittest
 from types import SimpleNamespace
@@ -766,6 +767,91 @@ class ExternalSupplementTests(unittest.TestCase):
 
 
 class ResearchReferenceTests(unittest.TestCase):
+    def test_resolve_llm_settings_prefers_gemini_provider(self):
+        settings = research_service.resolve_llm_settings(
+            SimpleNamespace(
+                LLM_PROVIDER="gemini",
+                GEMINI_API_KEY="gemini-key",
+                GEMINI_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai/",
+                GEMINI_TEXT_MODEL="gemini-3-pro-preview",
+                GEMINI_VISION_MODEL="gemini-3-pro-preview",
+                OPENAI_API_KEY="openai-key",
+            ),
+            env={},
+        )
+
+        self.assertEqual(settings.provider, "gemini")
+        self.assertEqual(settings.api_key, "gemini-key")
+        self.assertEqual(settings.base_url, "https://generativelanguage.googleapis.com/v1beta/openai/")
+        self.assertEqual(settings.text_model, "gemini-3-pro-preview")
+        self.assertEqual(settings.vision_model, "gemini-3-pro-preview")
+
+    def test_resolve_llm_settings_uses_env_when_config_secret_is_blank(self):
+        settings = research_service.resolve_llm_settings(
+            SimpleNamespace(
+                LLM_PROVIDER="gemini",
+                GEMINI_API_KEY="",
+                GEMINI_TEXT_MODEL="",
+                GEMINI_VISION_MODEL="",
+            ),
+            env={"GEMINI_API_KEY": "env-gemini-key"},
+        )
+
+        self.assertEqual(settings.provider, "gemini")
+        self.assertEqual(settings.api_key, "env-gemini-key")
+        self.assertEqual(settings.text_model, "gemini-3-pro-preview")
+
+    def test_generate_answer_uses_gemini_chat_completions(self):
+        class FakeCompletions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                payload = {
+                    "conclusion": "Gemini 已整理内部素材。",
+                    "recommendations": [{"text": "参考春日标题结构。", "source_ids": ["row-1"]}],
+                    "material_references": ["row-1"],
+                    "team_history_references": [],
+                    "image_analysis": None,
+                    "general_advice": [],
+                }
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(content=json.dumps(payload, ensure_ascii=False))
+                        )
+                    ]
+                )
+
+        completions = FakeCompletions()
+        service = research_service.ResearchService(None, None)
+        service.openai = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+        service.llm_provider = "gemini"
+        service.text_model = "gemini-3-pro-preview"
+
+        answer = asyncio.run(service.generate_answer(
+            question="英国春天标题素材",
+            task_type="material",
+            rows=[{
+                "id": "row-1",
+                "source_type": "viral_post",
+                "title": "英国春天标题",
+                "content": "春天、野餐、留学生周末。",
+                "likes_count": 100,
+                "saves_count": 50,
+            }],
+            sparse=False,
+            image_analysis=None,
+        ))
+
+        self.assertEqual(answer["conclusion"], "Gemini 已整理内部素材。")
+        self.assertEqual(answer["material_references"], ["row-1"])
+        self.assertEqual(completions.calls[0]["model"], "gemini-3-pro-preview")
+        self.assertEqual(completions.calls[0]["response_format"]["type"], "json_schema")
+        self.assertEqual(completions.calls[0]["messages"][0]["role"], "system")
+        self.assertIn("allowed_sources", completions.calls[0]["messages"][1]["content"])
+
     def test_fallback_answer_only_references_top_recommendations(self):
         service = research_service.ResearchService(None, None)
         rows = [

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:frontend": "node --test src/runtimeConfig.test.js src/aiDiscovery.test.js",
+    "test:frontend": "node --test src/runtimeConfig.test.js src/aiDiscovery.test.js src/designSystem.test.js",
     "test:agent": "cd crawler && python3 -m unittest test_agent_runtime.py test_agent_planning.py test_content_research_skill.py test_agent_api.py",
     "test:ai": "cd crawler && python3 -m unittest test_retrieval.py test_retrieval_pipeline.py test_knowledge_indexer.py test_discovery.py"
   },

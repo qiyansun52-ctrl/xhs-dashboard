@@ -252,6 +252,30 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("boom", snapshot["run"]["error_message"])
         self.assertEqual(events.get_history(run["id"])[-1]["event"], "run.failed")
 
+    async def test_review_actions_can_be_created_listed_and_rejected(self):
+        store = AgentRunStore()
+        run = await store.create_run("把这组选题存为草稿")
+
+        action = await store.create_review_action(
+            run_id=run["id"],
+            action_type="save_draft",
+            payload={"title": "英国春日校园选题", "preview": "从校园樱花切入申请季焦虑"},
+            rationale="用户要求把 Agent 产出落地为草稿，需人工确认后再写库。",
+            evidence_score=0.82,
+            duplicate_warning=None,
+        )
+        pending = await store.list_review_actions(status="pending")
+        rejected = await store.review_action(action["id"], status="rejected", review_reason="低质量")
+        remaining_pending = await store.list_review_actions(status="pending")
+
+        self.assertEqual(action["status"], "pending")
+        self.assertEqual(action["action_type"], "save_draft")
+        self.assertEqual(pending[0]["id"], action["id"])
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["review_reason"], "低质量")
+        self.assertIsNotNone(rejected["reviewed_at"])
+        self.assertEqual(remaining_pending, [])
+
 
 if __name__ == "__main__":
     unittest.main()
