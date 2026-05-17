@@ -6,13 +6,23 @@ export function getConversationTitle(conversation, messages = []) {
 }
 
 export function mergeConversationMessages(prev = [], next = []) {
-  const map = new Map(prev.map(message => [message.id, message]));
+  const order = new Map();
+  const map = new Map();
+  [...prev, ...next].forEach(message => {
+    if (!order.has(message.id)) order.set(message.id, order.size);
+  });
+  prev.forEach(message => {
+    map.set(message.id, message);
+  });
   for (const message of next) {
     map.set(message.id, { ...(map.get(message.id) || {}), ...message });
   }
-  return [...map.values()].sort((a, b) =>
-    String(a.created_at || "").localeCompare(String(b.created_at || "")),
-  );
+  return [...map.values()].sort((a, b) => {
+    if (!a.created_at || !b.created_at) {
+      return order.get(a.id) - order.get(b.id);
+    }
+    return String(a.created_at).localeCompare(String(b.created_at));
+  });
 }
 
 export function buildBriefRequest({ originalRequest, selections, freeText }) {

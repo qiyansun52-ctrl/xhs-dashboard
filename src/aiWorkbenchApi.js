@@ -37,18 +37,18 @@ export function createConversation(payload = {}) {
 }
 
 export function getConversation(conversationId) {
-  return requestJson(`/ai/conversations/${conversationId}`, { method: "GET" });
+  return requestJson(`/ai/conversations/${encodeURIComponent(conversationId)}`, { method: "GET" });
 }
 
 export function clarifyConversation(conversationId, message) {
-  return requestJson(`/ai/conversations/${conversationId}/clarify`, {
+  return requestJson(`/ai/conversations/${encodeURIComponent(conversationId)}/clarify`, {
     method: "POST",
     body: JSON.stringify({ message }),
   });
 }
 
 export function buildCrawlerBrief(conversationId, payload) {
-  return requestJson(`/ai/conversations/${conversationId}/crawler-brief`, {
+  return requestJson(`/ai/conversations/${encodeURIComponent(conversationId)}/crawler-brief`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -26,6 +26,22 @@ test("mergeConversationMessages appends new messages without duplicating ids", (
   assert.equal(result[0].content, "old updated");
 });
 
+test("mergeConversationMessages preserves insertion order when timestamps are missing", () => {
+  const result = mergeConversationMessages(
+    [
+      { id: "optimistic", content: "local pending" },
+      { id: "server-old", content: "old", created_at: "2026-05-17T01:00:00Z" },
+    ],
+    [
+      { id: "server-new", content: "new", created_at: "2026-05-17T02:00:00Z" },
+      { id: "optimistic", content: "server confirmed" },
+    ],
+  );
+
+  assert.deepEqual(result.map(item => item.id), ["optimistic", "server-old", "server-new"]);
+  assert.equal(result[0].content, "server confirmed");
+});
+
 test("buildBriefRequest preserves selections and free text", () => {
   const result = buildBriefRequest({
     originalRequest: "帮我找英国方面的素材",
