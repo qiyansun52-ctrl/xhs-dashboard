@@ -147,6 +147,47 @@ class ClarificationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("机构广告", brief["crawler_brief"]["exclusions"])
         self.assertGreaterEqual(len(brief["crawler_brief"]["search_queries"]), 3)
 
+    async def test_build_crawler_brief_includes_secondary_scene_queries(self):
+        service = ClarificationService(structured_completion=None)
+
+        brief = await service.build_crawler_brief(
+            original_request="帮我找英国方面的素材",
+            selections={
+                "content_scene": ["life", "housing"],
+                "expression_type": ["experience"],
+            },
+        )
+
+        queries = brief["crawler_brief"]["search_queries"]
+
+        self.assertIn("住宿租房", brief["crawler_brief"]["content_scenes"])
+        self.assertTrue(any("租房" in query for query in queries))
+        self.assertLessEqual(len(queries), 4)
+
+    async def test_valid_llm_payload_uses_configured_model_and_returns_payload(self):
+        calls = []
+        payload = {
+            "needs_clarification": True,
+            "detected_country": "美国",
+            "question": "你想找美国哪个方向？",
+            "option_groups": [
+                {"id": "content_scene", "label": "内容场景", "max_select": 2, "options": []},
+            ],
+            "free_text_prompt": "补充偏好",
+        }
+
+        def valid_completion(**kwargs):
+            calls.append(kwargs)
+            return payload
+
+        service = ClarificationService(structured_completion=valid_completion)
+
+        result = await service.clarify_request("帮我找美国方面的素材")
+
+        self.assertEqual(result, payload)
+        self.assertIsInstance(calls[0]["model"], str)
+        self.assertTrue(calls[0]["model"])
+
     async def test_invalid_llm_payload_falls_back_to_deterministic_brief(self):
         def invalid_completion(**kwargs):
             return {"broken": True}

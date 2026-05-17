@@ -47,8 +47,13 @@ EXCLUSION_OPTIONS = [
 
 
 class ClarificationService:
-    def __init__(self, structured_completion: Optional[Callable[..., Dict[str, Any]]] = None):
+    def __init__(
+        self,
+        structured_completion: Optional[Callable[..., Dict[str, Any]]] = None,
+        text_model: str = "gemini-3-pro-preview",
+    ):
         self.structured_completion = structured_completion
+        self.text_model = text_model
 
     async def clarify_request(self, question: str, messages: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         if self.structured_completion:
@@ -112,7 +117,7 @@ class ClarificationService:
             ],
         }
         return self.structured_completion(
-            model=None,
+            model=self.text_model,
             system_message="你是小红书留学素材爬虫的 brief 规划员。",
             user_content=json.dumps(prompt, ensure_ascii=False),
             schema_name="crawler_clarification",
@@ -174,6 +179,11 @@ class ClarificationService:
             f"{country}留学生 {primary_scene} 小红书",
             f"{country}留学 {primary_scene} 避坑",
         ]
+        for scene in scenes[1:]:
+            scene_term = scene_terms.get(scene, scene)
+            query = f"{country}留学 {scene_term} {primary_expression}"
+            if query not in queries:
+                queries.append(query)
         if len(expression_types) > 1:
             queries.append(f"{country}留学生 {expression_terms.get(expression_types[1], expression_types[1])}")
         if "租房" in free_text and f"{country}留学 租房 经验" not in queries:
