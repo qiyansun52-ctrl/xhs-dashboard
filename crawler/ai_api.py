@@ -34,6 +34,8 @@ from pydantic import BaseModel, Field
 from supabase import create_client, Client
 import voyageai
 from agent import AgentEventBus, AgentOrchestrator, AgentRunStore, ContentResearchSkill, PlanEngine, ToolInvoker
+from agent.conversation_store import ConversationStore
+from clarification_service import ClarificationService
 from discovery_service import DiscoveryNotFoundError, DiscoveryService
 from research_models import ResearchRequest
 from research_service import ResearchService
@@ -316,6 +318,11 @@ app.add_middleware(
 )
 
 research_service = ResearchService(sb, embed_texts)
+conversation_store = ConversationStore(sb)
+clarification_service = ClarificationService(
+    structured_completion=research_service._create_structured_chat_completion,
+    text_model=research_service.text_model,
+)
 discovery_service = DiscoveryService(
     sb,
     max_queries=getattr(app_config, "EXTERNAL_DISCOVERY_MAX_QUERIES", 4),
@@ -446,6 +453,21 @@ class ReviewCandidateReq(BaseModel):
     reason: Optional[Literal["不相关", "低质量", "疑似广告", "重复素材", "不适合团队调性", "数据异常"]] = None
 
 
+class CreateConversationReq(BaseModel):
+    title: str = "新对话"
+    member_id: Optional[str] = None
+
+
+class ClarifyConversationReq(BaseModel):
+    message: str = Field(..., min_length=1)
+
+
+class BuildCrawlerBriefReq(BaseModel):
+    original_request: str = Field(..., min_length=1)
+    selections: Dict[str, List[str]] = Field(default_factory=dict)
+    free_text: str = ""
+
+
 class CreateAgentRunReq(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     image_url: Optional[str] = None
@@ -501,6 +523,74 @@ async def research(req: ResearchRequest):
     if hasattr(result, "model_dump"):
         return result.model_dump()
     return result.dict()
+
+
+@app.get("/ai/conversations", dependencies=[Depends(require_api_key)])
+async def list_ai_conversations():
+    rows = await conversation_store.list_conversations()
+    return {"ok": True, "conversations": rows}
+
+
+@app.post("/ai/conversations", dependencies=[Depends(require_api_key)])
+async def create_ai_conversation(req: CreateConversationReq):
+    conversation = await conversation_store.create_conversation(
+        title=req.title,
+        member_id=req.member_id,
+    )
+    return {"ok": True, "conversation": conversation}
+
+
+@app.get("/ai/conversations/{conversation_id}", dependencies=[Depends(require_api_key)])
+async def get_ai_conversation(conversation_id: str):
+    snapshot = await conversation_store.get_conversation_snapshot(conversation_id)
+    if not snapshot:
+        raise HTTPException(404, "对话不存在")
+    return {"ok": True, **snapshot}
+
+
+@app.post("/ai/conversations/{conversation_id}/clarify", dependencies=[Depends(require_api_key)])
+async def clarify_ai_conversation(conversation_id: str, req: ClarifyConversationReq):
+    snapshot = await conversation_store.get_conversation_snapshot(conversation_id)
+    if not snapshot:
+        raise HTTPException(404, "对话不存在")
+    await conversation_store.add_message(conversation_id, "user", "text", req.message)
+    clarification = await clarification_service.clarify_request(
+        req.message,
+        messages=snapshot.get("messages") or [],
+    )
+    await conversation_store.add_message(
+        conversation_id,
+        "assistant",
+        "clarification" if clarification.get("needs_clarification") else "crawler_brief",
+        clarification.get("question") or clarification.get("crawler_brief", {}).get("goal") or "",
+        clarification,
+    )
+    return {"ok": True, "clarification": clarification}
+
+
+@app.post("/ai/conversations/{conversation_id}/crawler-brief", dependencies=[Depends(require_api_key)])
+async def build_ai_conversation_crawler_brief(conversation_id: str, req: BuildCrawlerBriefReq):
+    snapshot = await conversation_store.get_conversation_snapshot(conversation_id)
+    if not snapshot:
+        raise HTTPException(404, "对话不存在")
+    brief_result = await clarification_service.build_crawler_brief(
+        original_request=req.original_request,
+        selections=req.selections,
+        free_text=req.free_text,
+    )
+    crawler_brief = brief_result["crawler_brief"]
+    await conversation_store.add_message(
+        conversation_id,
+        "assistant",
+        "crawler_brief",
+        crawler_brief.get("goal") or "已生成爬虫 brief",
+        brief_result,
+    )
+    await conversation_store.update_context(
+        conversation_id,
+        latest_crawler_brief=crawler_brief,
+    )
+    return {"ok": True, "brief": brief_result}
 
 
 @app.post("/agent/runs", dependencies=[Depends(require_api_key)])

@@ -204,3 +204,58 @@ class ClarificationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["needs_clarification"])
         self.assertEqual(result["detected_country"], "新加坡")
+
+
+import ai_api
+
+
+class WorkbenchApiTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.original_store = getattr(ai_api, "conversation_store", None)
+        self.original_clarifier = getattr(ai_api, "clarification_service", None)
+        ai_api.conversation_store = ConversationStore()
+        ai_api.clarification_service = ClarificationService(structured_completion=None)
+
+    def tearDown(self):
+        ai_api.conversation_store = self.original_store
+        ai_api.clarification_service = self.original_clarifier
+
+    async def test_create_list_and_get_conversation(self):
+        created = await ai_api.create_ai_conversation(ai_api.CreateConversationReq(title="英国素材"))
+        listed = await ai_api.list_ai_conversations()
+        snapshot = await ai_api.get_ai_conversation(created["conversation"]["id"])
+
+        self.assertTrue(created["ok"])
+        self.assertEqual(listed["conversations"][0]["id"], created["conversation"]["id"])
+        self.assertEqual(snapshot["conversation"]["title"], "英国素材")
+
+    async def test_clarify_conversation_message_persists_user_and_assistant_messages(self):
+        created = await ai_api.create_ai_conversation(ai_api.CreateConversationReq(title="英国素材"))
+        conversation_id = created["conversation"]["id"]
+
+        result = await ai_api.clarify_ai_conversation(
+            conversation_id,
+            ai_api.ClarifyConversationReq(message="帮我找英国方面的素材"),
+        )
+        snapshot = await ai_api.get_ai_conversation(conversation_id)
+
+        self.assertTrue(result["clarification"]["needs_clarification"])
+        self.assertEqual([row["role"] for row in snapshot["messages"]], ["user", "assistant"])
+        self.assertEqual(snapshot["messages"][1]["message_type"], "clarification")
+
+    async def test_build_conversation_crawler_brief_updates_context(self):
+        created = await ai_api.create_ai_conversation(ai_api.CreateConversationReq(title="英国素材"))
+        conversation_id = created["conversation"]["id"]
+
+        result = await ai_api.build_ai_conversation_crawler_brief(
+            conversation_id,
+            ai_api.BuildCrawlerBriefReq(
+                original_request="帮我找英国方面的素材",
+                selections={"content_scene": ["life"], "expression_type": ["experience"]},
+                free_text="不要机构广告",
+            ),
+        )
+        snapshot = await ai_api.get_ai_conversation(conversation_id)
+
+        self.assertEqual(result["brief"]["crawler_brief"]["country"], "英国")
+        self.assertEqual(snapshot["context"]["latest_crawler_brief"]["country"], "英国")
