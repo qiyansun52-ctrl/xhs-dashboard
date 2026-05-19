@@ -568,6 +568,12 @@ async def clarify_ai_conversation(conversation_id: str, req: ClarifyConversation
         clarification.get("question") or clarification.get("crawler_brief", {}).get("goal") or "",
         clarification,
     )
+    crawler_brief = clarification.get("crawler_brief")
+    if not clarification.get("needs_clarification") and isinstance(crawler_brief, dict):
+        await conversation_store.update_context(
+            conversation_id,
+            latest_crawler_brief=crawler_brief,
+        )
     return {"ok": True, "clarification": clarification}
 
 
@@ -760,6 +766,15 @@ async def create_discovery_job(req: CreateDiscoveryJobReq):
             candidate_scoring_hint=req.crawler_brief.get("candidate_scoring_hint"),
             conversation_id=req.conversation_id,
         )
+        if req.conversation_id:
+            try:
+                await conversation_store.update_context(
+                    req.conversation_id,
+                    active_discovery_job_id=job.get("id"),
+                    latest_crawler_brief=req.crawler_brief or {},
+                )
+            except Exception as context_error:
+                log.warning(f"更新对话外部发现上下文失败: {context_error}")
         return {"ok": True, "job": job}
     except Exception as e:
         log.error(f"创建外部发现任务失败: {e}")

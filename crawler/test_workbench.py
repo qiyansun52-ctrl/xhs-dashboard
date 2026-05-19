@@ -190,6 +190,53 @@ class ClarificationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, payload)
         self.assertEqual(calls[0]["model"], "unit-test-model")
 
+    async def test_valid_llm_direct_brief_payload_is_accepted(self):
+        payload = {
+            "needs_clarification": False,
+            "detected_country": "英国",
+            "question": "",
+            "option_groups": [],
+            "free_text_prompt": "",
+            "crawler_brief": {
+                "goal": "寻找英国留学生活类真实经验素材",
+                "country": "英国",
+                "audiences": ["本科"],
+                "content_scenes": ["生活类"],
+                "expression_types": ["经验型"],
+                "quality_targets": ["高收藏"],
+                "exclusions": ["机构广告"],
+                "search_queries": ["英国留学 生活 真实经验"],
+                "candidate_scoring_hint": "优先真人经验",
+            },
+        }
+
+        def valid_completion(**kwargs):
+            return payload
+
+        service = ClarificationService(structured_completion=valid_completion, text_model="unit-test-model")
+
+        result = await service.clarify_request("帮我找英国留学生活类真实经验素材，不要机构广告")
+
+        self.assertFalse(result["needs_clarification"])
+        self.assertEqual(result["crawler_brief"]["country"], "英国")
+
+    async def test_llm_false_without_brief_falls_back_to_clarification(self):
+        def invalid_completion(**kwargs):
+            return {
+                "needs_clarification": False,
+                "detected_country": "英国",
+                "question": "",
+                "option_groups": [],
+                "free_text_prompt": "",
+            }
+
+        service = ClarificationService(structured_completion=invalid_completion, text_model="unit-test-model")
+
+        result = await service.clarify_request("帮我找英国方面的素材")
+
+        self.assertTrue(result["needs_clarification"])
+        self.assertEqual(result["detected_country"], "英国")
+
     async def test_structured_completion_requires_configured_model(self):
         def valid_completion(**kwargs):
             return {"needs_clarification": True, "option_groups": []}
@@ -262,6 +309,31 @@ class WorkbenchApiTests(unittest.IsolatedAsyncioTestCase):
         snapshot = await ai_api.get_ai_conversation(conversation_id)
 
         self.assertEqual(result["brief"]["crawler_brief"]["country"], "英国")
+        self.assertEqual(snapshot["context"]["latest_crawler_brief"]["country"], "英国")
+
+    async def test_clarify_conversation_direct_brief_updates_context(self):
+        class DirectBriefClarifier:
+            async def clarify_request(inner_self, message, messages=None):
+                return {
+                    "needs_clarification": False,
+                    "crawler_brief": {
+                        "goal": "寻找英国留学生活类真实经验素材",
+                        "country": "英国",
+                        "search_queries": ["英国留学 生活 真实经验"],
+                    },
+                }
+
+        ai_api.clarification_service = DirectBriefClarifier()
+        created = await ai_api.create_ai_conversation(ai_api.CreateConversationReq(title="英国素材"))
+        conversation_id = created["conversation"]["id"]
+
+        result = await ai_api.clarify_ai_conversation(
+            conversation_id,
+            ai_api.ClarifyConversationReq(message="帮我找英国留学生活类真实经验素材"),
+        )
+        snapshot = await ai_api.get_ai_conversation(conversation_id)
+
+        self.assertFalse(result["clarification"]["needs_clarification"])
         self.assertEqual(snapshot["context"]["latest_crawler_brief"]["country"], "英国")
 
 
@@ -348,6 +420,8 @@ class DiscoveryFinalStatusTests(unittest.TestCase):
 class DiscoveryJobApiBriefTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.original_service = getattr(ai_api, "discovery_service", None)
+        self.original_store = getattr(ai_api, "conversation_store", None)
+        ai_api.conversation_store = ConversationStore()
         self.created_payloads = []
 
         class FakeDiscoveryService:
@@ -362,6 +436,7 @@ class DiscoveryJobApiBriefTests(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self):
         ai_api.discovery_service = self.original_service
+        ai_api.conversation_store = self.original_store
 
     async def test_create_discovery_job_accepts_crawler_brief(self):
         req = ai_api.CreateDiscoveryJobReq(
@@ -375,10 +450,30 @@ class DiscoveryJobApiBriefTests(unittest.IsolatedAsyncioTestCase):
                 "quality_targets": ["高收藏"],
                 "exclusions": ["机构广告"],
             },
-            conversation_id="00000000-0000-0000-0000-000000000001",
         )
 
         result = await ai_api.create_discovery_job(req)
 
         self.assertEqual(result["job"]["search_queries"], ["英国留学 生活 真实经验"])
         self.assertEqual(self.created_payloads[0]["crawler_brief"]["country"], "英国")
+
+    async def test_create_discovery_job_updates_conversation_context(self):
+        created = await ai_api.create_ai_conversation(ai_api.CreateConversationReq(title="英国素材"))
+        conversation_id = created["conversation"]["id"]
+        req = ai_api.CreateDiscoveryJobReq(
+            user_question="帮我找英国方面的素材",
+            task_type="material",
+            trigger_reason="user_requested",
+            internal_answer_payload={},
+            crawler_brief={
+                "country": "英国",
+                "search_queries": ["英国留学 生活 真实经验"],
+            },
+            conversation_id=conversation_id,
+        )
+
+        result = await ai_api.create_discovery_job(req)
+        snapshot = await ai_api.get_ai_conversation(conversation_id)
+
+        self.assertEqual(result["job"]["id"], "job-1")
+        self.assertEqual(snapshot["context"]["active_discovery_job_id"], "job-1")

@@ -113,8 +113,10 @@ class ClarificationService:
             "recent_messages": messages[-8:],
             "rules": [
                 "如果请求很泛，返回 needs_clarification=true 和 2 到 4 个 option_groups。",
+                "如果请求已经足够具体，返回 needs_clarification=false，并填写 crawler_brief。",
                 "只询问能提高小红书爬虫精准度的信息。",
                 "选项必须来自内容场景、表达类型、质量目标、排除项。",
+                "needs_clarification=true 时 crawler_brief 必须为 null。",
                 "中文输出。",
             ],
         }
@@ -193,10 +195,19 @@ class ClarificationService:
         return queries[:4]
 
     def _valid_clarification_payload(self, payload: Dict[str, Any]) -> bool:
+        if not isinstance(payload, dict) or not isinstance(payload.get("needs_clarification"), bool):
+            return False
+        if payload.get("needs_clarification"):
+            return isinstance(payload.get("option_groups"), list)
+        return self._valid_crawler_brief(payload.get("crawler_brief"))
+
+    def _valid_crawler_brief(self, crawler_brief: Any) -> bool:
         return (
-            isinstance(payload, dict)
-            and isinstance(payload.get("needs_clarification"), bool)
-            and isinstance(payload.get("option_groups"), list)
+            isinstance(crawler_brief, dict)
+            and isinstance(crawler_brief.get("goal"), str)
+            and isinstance(crawler_brief.get("country"), str)
+            and isinstance(crawler_brief.get("search_queries"), list)
+            and any(str(query).strip() for query in crawler_brief.get("search_queries") or [])
         )
 
     def _clarification_schema(self) -> Dict[str, Any]:
@@ -233,6 +244,39 @@ class ClarificationService:
                     },
                 },
                 "free_text_prompt": {"type": "string"},
+                "crawler_brief": {
+                    "type": ["object", "null"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "country": {"type": "string"},
+                        "audiences": {"type": "array", "items": {"type": "string"}},
+                        "content_scenes": {"type": "array", "items": {"type": "string"}},
+                        "expression_types": {"type": "array", "items": {"type": "string"}},
+                        "quality_targets": {"type": "array", "items": {"type": "string"}},
+                        "exclusions": {"type": "array", "items": {"type": "string"}},
+                        "search_queries": {"type": "array", "items": {"type": "string"}},
+                        "candidate_scoring_hint": {"type": "string"},
+                    },
+                    "required": [
+                        "goal",
+                        "country",
+                        "audiences",
+                        "content_scenes",
+                        "expression_types",
+                        "quality_targets",
+                        "exclusions",
+                        "search_queries",
+                        "candidate_scoring_hint",
+                    ],
+                },
             },
-            "required": ["needs_clarification", "detected_country", "question", "option_groups", "free_text_prompt"],
+            "required": [
+                "needs_clarification",
+                "detected_country",
+                "question",
+                "option_groups",
+                "free_text_prompt",
+                "crawler_brief",
+            ],
         }

@@ -570,6 +570,17 @@ export default function AIWorkbenchPage() {
     setRefreshingDiscovery(false);
   }
 
+  function restoreDiscoveryJob(jobId) {
+    if (!jobId) return;
+    const requestSeq = discoveryRequestSeqRef.current + 1;
+    discoveryRequestSeqRef.current = requestSeq;
+    activeDiscoveryJobIdRef.current = jobId;
+    setDiscoveryJob({ id: jobId, status: "running" });
+    setCandidates([]);
+    setReviewingCandidateId(null);
+    refreshDiscovery({ jobId, expectedSeq: requestSeq }).catch(() => {});
+  }
+
   function applyConversationSnapshot(snapshot) {
     const nextMessages = snapshot.messages || [];
     const nextContext = snapshot.context || {};
@@ -582,6 +593,7 @@ export default function AIWorkbenchPage() {
     setFreeText("");
     setPrompt("");
     resetDiscoveryState();
+    restoreDiscoveryJob(nextContext.active_discovery_job_id);
   }
 
   async function loadConversations() {
